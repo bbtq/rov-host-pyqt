@@ -1,6 +1,8 @@
 import sys
-from PyQt6.QtWidgets import (QApplication, QVBoxLayout, QPushButton, QTextEdit, QWidget,
-                             QSlider, QLCDNumber, QLabel, QHBoxLayout, QCheckBox, QFrame, QGridLayout, QDialog)
+from PyQt6.QtWidgets import (
+    QApplication, QVBoxLayout, QPushButton, QTextEdit, QWidget, QDialog,QScrollArea,
+    QLabel, QSlider, QHBoxLayout, QCheckBox, QGridLayout, QFrame
+)
 from PyQt6.QtCore import Qt
 from jsonrpcclient import request, parse_json
 import requests
@@ -10,128 +12,188 @@ import json
 class JsonRpcClientDemo(QWidget):
     def __init__(self):
         super().__init__()
-
-        # Initialize UI
         self.init_ui()
-
-        # Store parameters
-        self.propeller_parameters = {}
+        self.propeller_parameters = {}  # To store the modified parameters
 
     def init_ui(self):
         self.setWindowTitle("JSON-RPC 2.0 Client Demo")
-        main_layout = QVBoxLayout()
+        layout = QVBoxLayout()
 
-        # Display area for JSON-RPC response
+        # Text area to display the results
         self.result_text = QTextEdit(self)
         self.result_text.setReadOnly(True)
 
-        # Button to send the JSON-RPC request
+        # Button to send the request
         self.send_button = QPushButton("Send 'load_parameters' Request", self)
         self.send_button.clicked.connect(self.send_rpc_request)
 
-        # Main layout components
-        main_layout.addWidget(self.send_button)
-        main_layout.addWidget(self.result_text)
+        # Layout
+        layout.addWidget(self.send_button)
+        layout.addWidget(self.result_text)
 
-        # Layout to show parameters in a new window
-        self.param_layout = QVBoxLayout()
-        main_layout.addLayout(self.param_layout)
+        # **************************************
 
-        self.setLayout(main_layout)
+        # **************************************
+        self.setLayout(layout)
 
     def send_rpc_request(self):
-        rpc_server_url = "http://192.168.137.219:8888"  # Replace with actual server URL
+        rpc_server_url = "http://192.168.137.219:8888"  # Replace with your RPC server address
 
         try:
-            # Create JSON-RPC request
             rpc_request = request("load_parameters")
             json_request = json.dumps(rpc_request)
 
-            # Send HTTP POST request
             response = requests.post(rpc_server_url, data=json_request, headers={"Content-Type": "application/json"})
             parsed_response = parse_json(response.text)
 
             # Extract parameters
-            self.propeller_parameters = parsed_response[0].get("propeller_parameters", {})
-            control_loop_parameters = parsed_response[0].get("control_loop_parameters", {})
+            self.propeller_parameters = parsed_response[0]["propeller_parameters"]
+            # control_loop_parameters = parsed_response[0]["control_loop_parameters"]
 
-            # Display raw JSON response
+            # 在本窗口显示json回复包
             self.result_text.setText(json.dumps(parsed_response, indent=4))
 
-            # Show parameters in a new window
+            # Open new window to display parameters
             self.show_parameter_window(self.propeller_parameters)
+
         except Exception as e:
             self.result_text.setText(f"An error occurred:\n{str(e)}")
 
     def show_parameter_window(self, parameters):
         """
-        Show a new window displaying parameters in a 2x4 grid layout.
+        Show a window with sliders and checkboxes to adjust propeller parameters.
         """
         dialog = QDialog(self)
-        dialog.setWindowTitle("Propeller Parameters")
-        layout = QVBoxLayout()
-        grid_layout = QGridLayout()
+        dialog.setWindowTitle("Adjust Propeller Parameters")
 
-        row, col = 0, 0  # Initialize grid positions
+        # Main layout
+        main_layout = QVBoxLayout()
 
+        # Store updated values
+        self.updated_values = {}
+
+        # Create a scroll area to allow scrolling when the window is resized
+        scroll_area = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_area.setWidgetResizable(True)  # Ensure the widget resizes with the window
+        scroll_area.setWidget(scroll_widget)
+
+        # Create a layout for the scroll area
+        scroll_layout = QVBoxLayout()
+        scroll_widget.setLayout(scroll_layout)
+
+        # Loop through each propeller and its parameters
         for propeller, values in parameters.items():
+            # Create a new grid layout for each propeller's parameters
+            grid_layout = QGridLayout()
+
+            # Add header (propeller name)
+            header = QLabel(f"{propeller}")
+            header.setStyleSheet("font-weight: bold; margin-top: 10px;")
+            grid_layout.addWidget(header, 0, 0, 1, 2)  # Span across 2 columns
+
+            # Add horizontal line under header
+            line = QFrame()
+            line.setFrameShape(QFrame.Shape.HLine)
+            grid_layout.addWidget(line, 1, 0, 1, 2)  # Span across 2 columns
+
+            row = 2  # Start adding parameters after header and line
+
+            # Add parameters (sliders and checkboxes)
             for key, value in values.items():
-                # Label for parameter
-                label = QLabel(f"{propeller} - {key}:")
-                grid_layout.addWidget(label, row, col)
+                name_label = QLabel(key)
 
-                if isinstance(value, (int, float)):
-                    # Slider and display for numeric values
-                    slider = QSlider(Qt.Orientation.Horizontal)
-                    slider.setRange(0, 100)
-                    slider.setValue(int(value))
-                    lcd = QLCDNumber()
-                    lcd.display(value)
-                    slider.valueChanged.connect(
-                        lambda val, prop=propeller, k=key, lcd=lcd: self.update_slider_value(prop, k, val, lcd))
-
-                    grid_layout.addWidget(slider, row, col + 1)
-                    grid_layout.addWidget(lcd, row, col + 2)
-                elif isinstance(value, bool):
+                if isinstance(value, bool):
                     # Checkbox for boolean values
-                    checkbox = QCheckBox()
-                    checkbox.setChecked(value)
-                    checkbox.stateChanged.connect(
-                        lambda state, prop=propeller, k=key: self.update_checkbox_value(prop, k, state))
-                    grid_layout.addWidget(checkbox, row, col + 1)
+                    checkbox = self.create_checkbox(key, value, propeller)
+                    grid_layout.addWidget(name_label, row, 0)  # Place in the first column
+                    grid_layout.addWidget(checkbox, row, 1)  # Place in the second column
+                elif isinstance(value, (int, float)):
+                    # Slider for numeric values
+                    slider, value_label = self.create_slider(key, value, propeller)
+                    grid_layout.addWidget(name_label, row, 0)  # Place in the first column
+                    grid_layout.addWidget(slider, row, 1)  # Place in the second column
+                    grid_layout.addWidget(value_label, row, 2)  # Place value label next to the slider
 
-                # Update row and column positions
-                col += 3
-                if col >= 8:
-                    col = 0
-                    row += 1
+                row += 1  # Move to the next row after each parameter
 
-        layout.addLayout(grid_layout)
-        confirm_button = QPushButton("Confirm")
-        confirm_button.clicked.connect(dialog.accept)
-        layout.addWidget(confirm_button)
+            # Add grid_layout for this propeller to the scroll_layout
+            scroll_layout.addLayout(grid_layout)
 
-        dialog.setLayout(layout)
-        dialog.resize(600, 400)
+        # Add scroll area to the main layout
+        main_layout.addWidget(scroll_area)
+
+        # Confirm button
+        confirm_button = QPushButton("Confirm Changes")
+        confirm_button.clicked.connect(lambda: self.confirm_changes(dialog))
+        main_layout.addWidget(confirm_button)
+
+        dialog.setLayout(main_layout)
+        dialog.resize(800, 400)
         dialog.exec()
 
-    def update_slider_value(self, propeller, key, value, lcd):
+    def create_slider(self, key, value, propeller):
         """
-        Update slider value and display it.
+        Create a slider and associated value label for numeric parameters.
+        - For integers: range is -128 to 127.
+        - For floats: range is -1.0 to 1.0, scaled to -100 to 100 internally.
         """
-        self.propeller_parameters[propeller][key] = value
-        lcd.display(value)
+        slider = QSlider(Qt.Orientation.Horizontal)
 
-    def update_checkbox_value(self, propeller, key, state):
+        # Determine slider range and scaling factor based on type
+        if isinstance(value, int):
+            slider.setRange(-128, 127)
+            slider.setValue(value)
+            value_label = QLabel(f"{value}")
+            slider.valueChanged.connect(
+                lambda val, k=key, p=propeller, lbl=value_label: self.update_slider_value(val, k, p, lbl)
+            )
+        elif isinstance(value, float):
+            slider.setRange(-100, 100)  # Scale float to -100 ~ 100
+            slider.setValue(int(value * 100))  # Scale initial value
+            value_label = QLabel(f"{value:.2f}")
+            slider.valueChanged.connect(
+                lambda val, k=key, p=propeller, lbl=value_label: self.update_slider_value(val / 100, k, p, lbl)
+            )
+
+        return slider, value_label
+
+    def create_checkbox(self, key, value, propeller):
         """
-        Update checkbox value.
+        Create a checkbox for boolean parameters.
         """
-        self.propeller_parameters[propeller][key] = state == Qt.CheckState.Checked.value
+        checkbox = QCheckBox()
+        checkbox.setChecked(value)
+        checkbox.stateChanged.connect(
+            lambda state, k=key, p=propeller: self.update_checkbox_value(state, k, p)
+        )
+        return checkbox
+
+    def update_slider_value(self, value, key, propeller, label):
+        """
+        Update the value of a slider and store it.
+        """
+        label.setText(f"{value}")
+        self.propeller_parameters[propeller][key] = value
+
+    def update_checkbox_value(self, state, key, propeller):
+        """
+        Update the value of a checkbox and store it.
+        """
+        self.propeller_parameters[propeller][key] = True if state == Qt.CheckState.Checked.value else False
+
+    def confirm_changes(self, dialog):
+        """
+        Display the updated parameters in the main text area and close the dialog.
+        """
+        updated_text = json.dumps(self.propeller_parameters, indent=4)
+        self.result_text.setText(f"Updated Propeller Parameters:\n{updated_text}")
+        dialog.accept()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     demo = JsonRpcClientDemo()
-    demo.resize(800, 600)
+    demo.resize(600, 300)
     demo.show()
     sys.exit(app.exec())

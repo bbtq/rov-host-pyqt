@@ -14,6 +14,8 @@ class JsonRpcClientDemo(QWidget):
         super().__init__()
         self.init_ui()
         self.propeller_parameters = {}  # To store the modified parameters
+        self.propeller_pwm_freq_calibration = {}
+        self.control_loop_parameters = {}
 
     def init_ui(self):
         self.setWindowTitle("JSON-RPC 2.0 Client Demo")
@@ -48,18 +50,20 @@ class JsonRpcClientDemo(QWidget):
 
             # Extract parameters
             self.propeller_parameters = parsed_response[0]["propeller_parameters"]
-            # control_loop_parameters = parsed_response[0]["control_loop_parameters"]
+            self.propeller_pwm_freq_calibration = parsed_response[0]["propeller_pwm_freq_calibration"]
+            self.control_loop_parameters = parsed_response[0]["control_loop_parameters"]
+
 
             # 在本窗口显示json回复包
             self.result_text.setText(json.dumps(parsed_response, indent=4))
 
             # Open new window to display parameters
-            self.show_parameter_window(self.propeller_parameters)
+            self.show_parameter_window(self.propeller_parameters, self.propeller_pwm_freq_calibration)
 
         except Exception as e:
             self.result_text.setText(f"An error occurred:\n{str(e)}")
 
-    def show_parameter_window(self, parameters):
+    def show_parameter_window(self, parameters, freq_val):
         """
         Show a window with sliders and checkboxes to adjust propeller parameters.
         """
@@ -67,7 +71,7 @@ class JsonRpcClientDemo(QWidget):
         dialog.setWindowTitle("Adjust Propeller Parameters")
 
         # Main layout
-        main_layout = QVBoxLayout()
+        main_layout = QGridLayout()
 
         # Store updated values
         self.updated_values = {}
@@ -82,7 +86,9 @@ class JsonRpcClientDemo(QWidget):
         scroll_layout = QVBoxLayout()
         scroll_widget.setLayout(scroll_layout)
 
-        # Loop through each propeller and its parameters
+        scroll_layout.addLayout(self.add_freq_grid_layout(freq_val))
+
+# Loop through each propeller and its parameters
         for propeller, values in parameters.items():
             # Create a new grid layout for each propeller's parameters
             grid_layout = QGridLayout()
@@ -124,7 +130,7 @@ class JsonRpcClientDemo(QWidget):
         main_layout.addWidget(scroll_area)
 
         # Confirm button
-        confirm_button = QPushButton("Confirm Changes")
+        confirm_button = QPushButton("confirm Changes !")
         confirm_button.clicked.connect(lambda: self.confirm_changes(dialog))
         main_layout.addWidget(confirm_button)
 
@@ -132,13 +138,40 @@ class JsonRpcClientDemo(QWidget):
         dialog.resize(800, 400)
         dialog.exec()
 
+    def add_freq_grid_layout(self, value):
+        # layout show pwm_freq
+        grid_layout = QGridLayout()
+        # Add header (propeller name)
+        key = "propeller_pwm_freq_calibration"
+        name_label = QLabel(key)
+        name_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+
+        slider: QSlider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(-100, 100)  # Scale float to -100 ~ 100
+        slider.setValue(int(value * 100))  # Scale initial value
+        value_label = QLabel(f"{value:.2f}")
+        slider.valueChanged.connect(
+            lambda val, k=key, lbl=value_label: self.update_pwmslider_value(val / 100, k, lbl)
+        )
+
+        grid_layout.addWidget(name_label, 0, 0)  # Place in the first column
+        grid_layout.addWidget(slider, 0, 1)  # Place in the second column
+        grid_layout.addWidget(value_label, 0, 2)  # Place value label next to the slider
+
+        # Add horizontal line under header
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        grid_layout.addWidget(line, 1, 0, 1, 2)  # Span across 2 columns
+
+        return grid_layout
+
     def create_slider(self, key, value, propeller):
         """
         Create a slider and associated value label for numeric parameters.
         - For integers: range is -128 to 127.
         - For floats: range is -1.0 to 1.0, scaled to -100 to 100 internally.
         """
-        slider = QSlider(Qt.Orientation.Horizontal)
+        slider: QSlider = QSlider(Qt.Orientation.Horizontal)
 
         # Determine slider range and scaling factor based on type
         if isinstance(value, int):
@@ -173,8 +206,15 @@ class JsonRpcClientDemo(QWidget):
         """
         Update the value of a slider and store it.
         """
-        label.setText(f"{value}")
+        label.setText(f"{value} *")
         self.propeller_parameters[propeller][key] = value
+
+    def update_pwmslider_value(self, value, key, label):
+        """
+        Update the value of a slider and store it.
+        """
+        label.setText(f"{value} *")
+        self.propeller_parameters[key] = value
 
     def update_checkbox_value(self, state, key, propeller):
         """

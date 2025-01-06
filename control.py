@@ -60,10 +60,15 @@ class Controller:
                     case 9:
                         self.actions["direction_locked"] = bool(button)
 
+            for i in range(joystick.get_numhats()):
+                hat = joystick.get_hat(i)
+                # self.actions["x"] = hat[0] * 0.5
+                # self.actions["y"] = hat[1] * -0.5
+
             # 遍历字典并打印每个键对应的值
-            for key, value in self.actions.items():
-                print(f"The value of '{key}' is {value}")
-            print("******************************\n")
+            # for key, value in self.actions.items():
+            #     print(f"The value of '{key}' is {value}")
+            # print("******************************\n")
             await asyncio.sleep(0.01)  # Avoid busy-waiting
 
     def get_actions(self):

@@ -8,25 +8,7 @@ import cv2
 from jsonrpcclient import request
 import requests
 from control import Controller
-
-
-class RpcClient:
-    def __init__(self, rpc_server_url):
-        self.rpc_server_url = rpc_server_url
-
-    def send_joystick(self, actions):
-        # Prepare JSON-RPC requests using params dictionary
-        requests_list = [
-            request("move", params={"rot": actions["rot"], "x": actions["x"], "y": actions["y"], "z": actions["z"]}),
-            request("set_depth_locked", params=[actions["depth_locked"]]),
-            request("set_direction_locked", params=[actions["direction_locked"]]),
-            request("catch", params=[actions["catch"]])
-        ]
-
-        # Send the requests to the server
-        response = requests.post(self.rpc_server_url, json=requests_list)
-        # Print the response from the server
-        print(response.json())
+from jsonrpc import RpcClient
 
 
 class VideoStream(QObject):
@@ -80,7 +62,7 @@ class MainWindow(QWidget):
         # Video display label
         self.video_label = QLabel("Video Stream")
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_label.setStyleSheet("background-color: black;")
+        self.video_label.setStyleSheet("background-color: green;")
         self.video_label.setScaledContents(True)  # Allow QLabel to scale its contents
         self.video_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -175,21 +157,24 @@ class MainWindow(QWidget):
         if self.last_actions != actions:
             self.rpc_client.send_joystick(actions)
             self.last_actions = actions
-        for action, value in actions.items():
-            if isinstance(value, bool):
-                # 如果值是布尔类型
-                if value:
-                    print(f"Action '{action}' is locked")
-                    # 这里可以添加具体的锁定逻辑，例如：
-                    # if action == "depth_locked":
-                    #     lock_depth()
-                    # elif action == "direction_locked":
-                    #     lock_direction()
-                else:
-                    print(f"Action '{action}' is unlocked")
-            elif isinstance(value, (int, float)):
-                # 如果值是数值类型
-                if value != 0.0 or value != -0.0:
+            for key, value in actions.items():
+                print(f"The value of '{key}' is {value}")
+            print("******************************\n")
+            for action, value in actions.items():
+                if isinstance(value, bool):
+                    # 如果值是布尔类型
+                    if value:
+                        print(f"Action '{action}' is locked")
+                        # 这里可以添加具体的锁定逻辑，例如：
+                        # if action == "depth_locked":
+                        #     lock_depth()
+                        # elif action == "direction_locked":
+                        #     lock_direction()
+                    else:
+                        print(f"Action '{action}' is unlocked")
+
+                elif isinstance(value, (int, float)):
+                    # 如果值是数值类型
                     match action:
                         case "x" :
                             if value > 0.1 :
@@ -223,8 +208,8 @@ class MainWindow(QWidget):
                             else :
                                 self.action_buttons["right_rot"].setEnabled(False)
                                 self.action_buttons["left_rot"].setEnabled(False)
-            else:
-                print(f"Unknown type for action '{action}'")
+                else:
+                    print(f"Unknown type for action '{action}'")
         pass
 
 

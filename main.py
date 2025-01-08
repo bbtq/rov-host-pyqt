@@ -1,14 +1,15 @@
 import sys
 import asyncio
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QSize
-from PyQt6.QtGui import QIcon, QImage, QPixmap
+from PyQt6.QtGui import QIcon, QImage, QPixmap, QTransform, QPainter
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QSizePolicy, \
-    QGridLayout, QDockWidget
+    QGridLayout, QDockWidget, QCheckBox
 import cv2
 from jsonrpcclient import request
 import requests
 from control import Controller
 from jsonrpc import RpcClient
+from user_config import user_config
 
 
 class VideoStream(QObject):
@@ -17,9 +18,10 @@ class VideoStream(QObject):
     def __init__(self, rtsp_url):
         super().__init__()
         self.rtsp_url = rtsp_url
-        self.running = True
+        self.running = False
 
     def start(self):
+        self.running = True
         cap = cv2.VideoCapture(self.rtsp_url)
         if not cap.isOpened():
             print("Failed to open RTSP stream")
@@ -30,7 +32,7 @@ class VideoStream(QObject):
             ret, frame = cap.read()
             if ret:
                 self.frame_received.emit(frame)
-            cv2.waitKey(30)  # Simulate frame delay
+            cv2.waitKey(30)
 
         cap.release()
 
@@ -41,23 +43,35 @@ class VideoStream(QObject):
 class MainWindow(QWidget):
     def __init__(self, controller, rtsp_url, rpc_server_url):
         super().__init__()
+        self.user_config = user_config()
         self.controller = controller
         self.rtsp_url = rtsp_url
+        self.rpc_server_url = rpc_server_url
         self.rpc_client = RpcClient(rpc_server_url)
-        self.init_ui()
-        self.setup_video_stream()
+        self.video_thread = None
         self.last_actions = {}
+        self.init_ui()
 
     def init_ui(self):
+
         self.setWindowTitle("Joystick & Video Viewer")
         self.setGeometry(100, 100, 800, 600)
+        # 获取屏幕分辨率并计算居中坐标
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+        window_geometry = self.geometry()
+
+        x = (screen_geometry.width() - window_geometry.width()) // 2
+        y = (screen_geometry.height() - window_geometry.height()) // 2
+        self.setGeometry(x, y, window_geometry.width(), window_geometry.height())
+
         self.setMinimumSize(400, 300)  # Set a minimum size for the window
 
         # # 创建一个QDockWidget
         dock_widget = QDockWidget("Floating Grid", self)
         dock_widget.setFloating(True)  # 设置为浮动状态
         dock_widget.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)  # 允许移动
-
+        dock_widget.setGeometry(x+window_geometry.width(), y, 50, 100)
 
         # Video display label
         self.video_label = QLabel("Video Stream")
@@ -69,21 +83,62 @@ class MainWindow(QWidget):
         )  # Allow QLabel to expand and shrink
         self.video_label.setMinimumSize(200, 150)  # Set a minimum size for the video display
 
-        # Action buttons
+        video_en_button = QPushButton()
+        video_en_button.setIcon(QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/devices/computer-symbolic.symbolic.png"))
+        video_en_button.setCheckable(True)
+        video_en_button.setFixedSize(30, 30)
+        video_en_button.clicked[bool].connect(self.toggle_video_stream)
+
+        connect_button = QPushButton()
+        connect_button.setIcon(
+            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/actions/mail-send-receive-symbolic.symbolic.png"))
+        connect_button.setCheckable(True)
+        connect_button.setFixedSize(30, 30)
+        connect_button.clicked[bool].connect(self.toggle_jsonrpc_connect)
+
+        config_sidebar_button = QPushButton()
+        config_sidebar_button.setIcon(
+            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/actions/sidebar-show-right-symbolic.symbolic.png")
+        )
+        config_sidebar_button.setCheckable(True)
+        config_sidebar_button.setFixedSize(30, 30)
+        config_sidebar_button.clicked[bool].connect(self.toggle_config_sidebar_view)
+
+        user_layout = QHBoxLayout()
+        user_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        user_layout.addWidget(connect_button)
+        user_layout.addWidget(video_en_button)
+
+        config_layout = QHBoxLayout()
+        config_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        config_layout.addWidget(config_sidebar_button)
+
+        user_top_layout = QHBoxLayout()
+        user_top_layout.addLayout(user_layout)
+        user_top_layout.addLayout(config_layout)
+
+
+    # Action buttons
         self.action_buttons = {}
         # 创建一个3x3的网格布局
         grid_layout = QGridLayout()
 
         # Define action buttons and corresponding icons
         action_icons = {
-            "left_rot": "./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png",
-            "go": "./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png",
-            "right_rot": "./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png",
-            "left": "./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png",
-            "right": "./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png",
-            "down": "./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png",
-            "back": "./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png",
-            "up": "./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png"
+            "left_rot": "./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png",       # 左旋
+            "go": "./icons/Adwaita/32x32/actions/go-up-symbolic.symbolic.png",                          # 前
+            "right_rot": "./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png",     # 右旋
+            "left": "./icons/Adwaita/32x32/actions/go-next-symbolic-rtl.symbolic.png",                  # 左
+            "right": "./icons/Adwaita/32x32/actions/go-next-symbolic.symbolic.png",                     # 右
+            "down": "./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png",                    # 下降
+            "back": "./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png",                      # 后
+            "up": "./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png",                         # 上升
+            "wheel_go": "./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png",                        # 履带-前进
+            "wheel_left": "./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png",                   # 履带-左转
+            "wheel_right": "./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png",                    # 履带-右转
+            "clear_shift_up": "./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png",     # 清刷盘-升档
+            "wheel_back": "./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png",                    # 履带-后退
+            "clear_shift_down": "./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png",   # 清刷盘-降档
         }
 
         for i, (action, icon_path) in enumerate(action_icons.items()):
@@ -110,39 +165,76 @@ class MainWindow(QWidget):
                 grid_layout.addWidget(button, 2, 1)
             elif i == 7:  # 上升
                 grid_layout.addWidget(button, 2, 2)
+            elif i == 8:  # 履带-前进
+                grid_layout.addWidget(button, 3, 1)
+            elif i == 9:  # 履带-左转
+                grid_layout.addWidget(button, 4, 0)
+            elif i == 10:  # 履带-右转
+                grid_layout.addWidget(button, 4, 2)
+            elif i == 11:  # 清刷盘-升档
+                grid_layout.addWidget(button, 5, 0)
+            elif i == 12:  # 履带-后退
+                grid_layout.addWidget(button, 5, 1)
+            elif i == 13:  # 清刷盘-降档
+                grid_layout.addWidget(button, 5, 2)
+
+        # 加载原始图片
+        original_pixmap = QPixmap("./icons/machine/test_machine.png")
+
+        # 创建一个QTransform对象并设置旋转角度
+        transform = QTransform().rotate(90)  # 旋转角度
+
+        # 应用旋转变换到原始图片
+        rotated_pixmap = original_pixmap.transformed(transform)
+
+        # 创建一个QLabel来显示机器图片
+        label = QLabel()
+        label.setFixedSize(90, 90)  # 设置QLabel的固定大小为64x64像素
+        label.setScaledContents(True)  # 启用图片自适应QLabel大小[^41^]
+        label.setPixmap(rotated_pixmap)
+
+        info_show_layout = QVBoxLayout()
+        info_show_layout.addLayout(grid_layout)
+        info_show_layout.addWidget(label)
 
         # # 创建一个QWidget作为QDockWidget的内容
         dock_widget_content = QWidget()
-        dock_widget_content.setLayout(grid_layout)
+        dock_widget_content.setLayout(info_show_layout)
         dock_widget.setWidget(dock_widget_content)
 
+        # 默认显示主界面
+        visual_layout = QVBoxLayout()
+        visual_layout.addLayout(user_top_layout)
+        visual_layout.addWidget(self.video_label)
+
         # Main layout
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(self.video_label)
+        main_layout = QHBoxLayout()
+        main_layout.addLayout(visual_layout)
+        main_layout.addWidget(self.user_config)
+        self.user_config.hide()
 
         self.setLayout(main_layout)
 
         pass
 
-    def setup_video_stream(self):
-        self.video_thread = VideoStream(self.rtsp_url)
-        self.video_thread.frame_received.connect(self.update_video_frame)
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, self.video_thread.start)
+    def toggle_config_sidebar_view(self, state):
+        if state:
+            self.user_config.show()
+        else:
+            self.user_config.hide()
 
-    def closeEvent(self, event):
-        # Stop video stream
-        self.video_thread.stop()
 
-        # Stop controller tasks
-        self.controller.stop()
-
-        # Exit application
-        QApplication.instance().quit()
-        event.accept()
+    def toggle_video_stream(self, state):
+        if state:
+            self.video_thread = VideoStream(self.rtsp_url)
+            self.video_thread.frame_received.connect(self.update_video_frame)
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, self.video_thread.start)
+        else:
+            if self.video_thread:
+                self.video_thread.stop()
 
     def update_video_frame(self, frame):
-        # Resize the frame to fit QLabel dynamically
         label_width = self.video_label.width()
         label_height = self.video_label.height()
         resized_frame = cv2.resize(frame, (label_width, label_height))
@@ -152,6 +244,27 @@ class MainWindow(QWidget):
         pixmap = QPixmap.fromImage(qt_image)
         self.video_label.setPixmap(pixmap)
         pass
+
+    def closeEvent(self, event):
+        # Stop video stream
+        if self.video_thread:
+            self.video_thread.stop()
+
+        # Stop controller tasks
+        self.controller.stop()
+
+        # Exit application
+        QApplication.instance().quit()
+        event.accept()
+
+    def toggle_jsonrpc_connect(self, state):
+        if state:
+            self.rpc_client.set_jsonrpc_client_url(self.rpc_server_url)
+            self.rpc_client.connect_jsonrpc_server(True)
+            self.user_config.lock_edit_line_all(True)
+        else:
+            self.rpc_client.connect_jsonrpc_server(False)
+            self.user_config.lock_edit_line_all(False)
 
     def update_action_buttons(self, actions):
         if self.last_actions != actions:

@@ -5,8 +5,17 @@ import requests
 class RpcClient:
     def __init__(self, rpc_server_url):
         self.rpc_server_url = rpc_server_url
+        self.unconnected = True
+
+    def set_jsonrpc_client_url(self, rpc_server_url):
+        self.rpc_server_url = rpc_server_url
+
+    def connect_jsonrpc_server(self, state: bool):
+        self.unconnected = not state
 
     def send_joystick(self, actions):
+        if self.unconnected:
+            return
         # Prepare JSON-RPC requests using params dictionary
         requests_list = [
             request("move", params={"rot": actions["rot"], "x": actions["x"], "y": actions["y"], "z": actions["z"]}),

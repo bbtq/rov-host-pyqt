@@ -18,6 +18,8 @@ class Controller:
             "depth_locked": False,  # 深度锁定
             "direction_locked": True  # 方向锁定
         }
+        self.joysticks_list = {}
+        self.joystick_unlock = False
         self.running = True  # Flag to control polling
         self._initialize_joystick()
 
@@ -31,8 +33,10 @@ class Controller:
             print("No joystick connected.")
 
     async def poll_events(self):
-        joystick = self.joystick
         while self.running:
+            joystick = self.joystick
+            if self.joystick_unlock:
+                continue
             pygame.event.pump()  # Make sure we only call this while running
 
             for i in range(joystick.get_numaxes()):
@@ -68,17 +72,40 @@ class Controller:
             # 遍历字典并打印每个键对应的值
             # for key, value in self.actions.items():
             #     print(f"The value of '{key}' is {value}")
-            # print("******************************\n")
+            # print("************* while *************\n")
             await asyncio.sleep(0.01)  # Avoid busy-waiting
+
+
+
 
     def get_actions(self):
         actions = copy.deepcopy(self.actions)
         # actions = []
         return actions
 
+    def get_joysticks_list(self):
+        joystick_count = pygame.joystick.get_count()
+        if joystick_count > 0:
+            for i in range(joystick_count):
+                joystick = pygame.joystick.Joystick(i)
+                joystick.init()
+                name = joystick.get_name()
+                self.joysticks_list[str(i)] = str(name)
+        else:
+            print("none joysticks")
+        joysticks_list = copy.deepcopy(self.joysticks_list)
+        return joysticks_list
+
+    def set_joystick(self, id):
+        self.joystick_unlock = True
+        self.joystick = pygame.joystick.Joystick(id)
+        self.joystick.init()
+        self.joystick_unlock = False
+
     def stop(self):
         """Stop polling and clean up resources."""
         self.running = False
-        pygame.joystick.quit()  # Quit joystick system before pygame.quit()
+        if pygame.joystick.get_init():
+            pygame.joystick.quit()  # Quit joystick system before pygame.quit()
         pygame.quit()  # Quit pygame after quitting joystick system
         print("Controller stopped and resources released.")

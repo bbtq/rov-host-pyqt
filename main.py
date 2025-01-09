@@ -3,7 +3,7 @@ import asyncio
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QSize
 from PyQt6.QtGui import QIcon, QImage, QPixmap, QTransform, QPainter
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QSizePolicy, \
-    QGridLayout, QDockWidget, QCheckBox
+    QGridLayout, QDockWidget, QTreeView
 import cv2
 from jsonrpcclient import request
 import requests
@@ -41,13 +41,13 @@ class VideoStream(QObject):
 
 
 class MainWindow(QWidget):
-    def __init__(self, controller, rtsp_url, rpc_server_url):
+    def __init__(self, controller, rtsp_url, rpc_client, rpc_server_url):
         super().__init__()
         self.user_config = user_config()
         self.controller = controller
         self.rtsp_url = rtsp_url
         self.rpc_server_url = rpc_server_url
-        self.rpc_client = RpcClient(rpc_server_url)
+        self.rpc_client = rpc_client
         self.video_thread = None
         self.last_actions = {}
         self.init_ui()
@@ -117,7 +117,6 @@ class MainWindow(QWidget):
         user_top_layout.addLayout(user_layout)
         user_top_layout.addLayout(config_layout)
 
-
     # Action buttons
         self.action_buttons = {}
         # 创建一个3x3的网格布局
@@ -182,20 +181,25 @@ class MainWindow(QWidget):
         original_pixmap = QPixmap("./icons/machine/test_machine.png")
 
         # 创建一个QTransform对象并设置旋转角度
-        transform = QTransform().rotate(90)  # 旋转角度
+        transform = QTransform().rotate(0)  # 旋转角度
 
         # 应用旋转变换到原始图片
         rotated_pixmap = original_pixmap.transformed(transform)
 
         # 创建一个QLabel来显示机器图片
-        label = QLabel()
-        label.setFixedSize(90, 90)  # 设置QLabel的固定大小为64x64像素
-        label.setScaledContents(True)  # 启用图片自适应QLabel大小[^41^]
-        label.setPixmap(rotated_pixmap)
+        self.machine_label = QLabel()
+        self.machine_label.setFixedSize(90, 90)  # 设置QLabel的固定大小为64x64像素
+        self.machine_label.setScaledContents(True)  # 启用图片自适应QLabel大小[^41^]
+        self.machine_label.setPixmap(rotated_pixmap)
+
+        self.info_tree = QTreeView()
+        info_layout = QVBoxLayout()
+        info_layout.addWidget(self.info_tree)
 
         info_show_layout = QVBoxLayout()
         info_show_layout.addLayout(grid_layout)
-        info_show_layout.addWidget(label)
+        info_show_layout.addWidget(self.machine_label)
+        info_show_layout.addLayout(info_layout)
 
         # # 创建一个QWidget作为QDockWidget的内容
         dock_widget_content = QWidget()
@@ -222,7 +226,6 @@ class MainWindow(QWidget):
             self.user_config.show()
         else:
             self.user_config.hide()
-
 
     def toggle_video_stream(self, state):
         if state:
@@ -252,6 +255,9 @@ class MainWindow(QWidget):
 
         # Stop controller tasks
         self.controller.stop()
+
+        # 停止网络任务
+        self.rpc_client.rpc_server_stop()
 
         # Exit application
         QApplication.instance().quit()
@@ -339,7 +345,8 @@ async def main():
     rtsp_url = "rtsp://rov:rov@192.168.137.132:554/"
     rpc_server_url = "http://192.168.137.219:8888/"
     controller = Controller()
-    main_window = MainWindow(controller, rtsp_url, rpc_server_url)
+    rpc_client = RpcClient(rpc_server_url)
+    main_window = MainWindow(controller, rtsp_url, rpc_client, rpc_server_url)
 
     # Show the window
     main_window.show()
@@ -348,6 +355,7 @@ async def main():
     tasks = [
         asyncio.create_task(controller.poll_events()),
         asyncio.create_task(update_ui(main_window)),
+        asyncio.create_task(rpc_client.send_get_info(main_window.machine_label, main_window.info_tree)),
     ]
 
     try:

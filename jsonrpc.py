@@ -12,7 +12,7 @@ class RpcClient:
         self.running = True
         self.rpc_server_url = rpc_server_url
         self.unconnected = True
-        self.get_info_time = 5.0
+        self.get_info_time = 0.1
 
         self.machine_info = {}
 
@@ -59,8 +59,8 @@ class RpcClient:
                 child = QStandardItem(key)
                 child_value = QStandardItem(value)
                 root_item.appendRow([child, child_value])
-                if key == 'angle':
-                    angle = value
+                if key == 'Yaw':
+                    angle = float(value)
                 else:
                     angle = 0
             # 将根节点添加到模型

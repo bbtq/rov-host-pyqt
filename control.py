@@ -29,14 +29,22 @@ class Controller:
             self.joystick.init()
             print(f"Joystick connected: {self.joystick.get_name()}")
         else:
-            self.running = False
+            # self.running = False
             print("No joystick connected.")
 
     async def poll_events(self):
         while self.running:
-            joystick = self.joystick
-            if self.joystick_unlock:
+            if pygame.joystick.get_count() > 0:
+                if pygame.joystick.Joystick(0).get_name() != self.joystick.get_name():
+                    self.joystick = pygame.joystick.Joystick(0)
+                    self.joystick.init()
+            else:
+                self.joystick = None
+                await asyncio.sleep(0.5)
                 continue
+            # if self.joystick_unlock:
+            #     continue
+            joystick = self.joystick
             pygame.event.pump()  # Make sure we only call this while running
 
             for i in range(joystick.get_numaxes()):
@@ -75,11 +83,8 @@ class Controller:
             # print("************* while *************\n")
             await asyncio.sleep(0.01)  # Avoid busy-waiting
 
-
-
-
     def get_actions(self):
-        actions = copy.deepcopy(self.actions)
+        actions = self.actions.copy()
         # actions = []
         return actions
 

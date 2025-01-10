@@ -41,9 +41,11 @@ class user_config(QWidget):
 
     def save_rpc_url(self):
         self.rpc_url = self.rpc_url_edit_line.text()
+        self.rpc_url_edit_line.setText(self.rpc_url)
 
     def save_video_url(self):
         self.video_url = self.video_url_edit_line.text()
+        self.video_url_edit_line.setText(self.video_url)
 
     def lock_rpc_url_edit(self, state: bool):
         self.rpc_url_edit_line.setReadOnly(state)

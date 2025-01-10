@@ -41,12 +41,10 @@ class VideoStream(QObject):
 
 
 class MainWindow(QWidget):
-    def __init__(self, controller, rtsp_url, rpc_client, rpc_server_url):
+    def __init__(self, my_user_config, controller, rpc_client):
         super().__init__()
-        self.user_config = user_config()
+        self.user_config = my_user_config
         self.controller = controller
-        self.rtsp_url = rtsp_url
-        self.rpc_server_url = rpc_server_url
         self.rpc_client = rpc_client
         self.video_thread = None
         self.last_actions = {}
@@ -132,7 +130,9 @@ class MainWindow(QWidget):
             "down": "./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png",                    # 下降
             "back": "./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png",                      # 后
             "up": "./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png",                         # 上升
+            "raise": "./icons/Adwaita/32x32/actions/media-skip-backward-symbolic.symbolic.png",         # 仰头
             "wheel_go": "./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png",                        # 履带-前进
+            "prone": "./icons/Adwaita/32x32/actions/media-skip-forward-symbolic.symbolic.png",         # 俯
             "wheel_left": "./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png",                   # 履带-左转
             "wheel_right": "./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png",                    # 履带-右转
             "clear_shift_up": "./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png",     # 清刷盘-升档
@@ -164,17 +164,21 @@ class MainWindow(QWidget):
                 grid_layout.addWidget(button, 2, 1)
             elif i == 7:  # 上升
                 grid_layout.addWidget(button, 2, 2)
-            elif i == 8:  # 履带-前进
+            elif i == 8:  # 俯仰角-仰 pull-up
+                grid_layout.addWidget(button, 3, 0)
+            elif i == 9:  # 履带-前进
                 grid_layout.addWidget(button, 3, 1)
-            elif i == 9:  # 履带-左转
+            elif i == 10:  # 俯仰角-俯 pull-down
+                grid_layout.addWidget(button, 3, 2)
+            elif i == 11:  # 履带-左转
                 grid_layout.addWidget(button, 4, 0)
-            elif i == 10:  # 履带-右转
+            elif i == 12:  # 履带-右转
                 grid_layout.addWidget(button, 4, 2)
-            elif i == 11:  # 清刷盘-升档
+            elif i == 13:  # 清刷盘-升档
                 grid_layout.addWidget(button, 5, 0)
-            elif i == 12:  # 履带-后退
+            elif i == 14:  # 履带-后退
                 grid_layout.addWidget(button, 5, 1)
-            elif i == 13:  # 清刷盘-降档
+            elif i == 15:  # 清刷盘-降档
                 grid_layout.addWidget(button, 5, 2)
 
         # 加载原始图片
@@ -229,7 +233,7 @@ class MainWindow(QWidget):
 
     def toggle_video_stream(self, state):
         if state:
-            self.video_thread = VideoStream(self.rtsp_url)
+            self.video_thread = VideoStream(self.user_config.video_url)
             self.video_thread.frame_received.connect(self.update_video_frame)
             loop = asyncio.get_event_loop()
             loop.run_in_executor(None, self.video_thread.start)
@@ -265,7 +269,7 @@ class MainWindow(QWidget):
 
     def toggle_jsonrpc_connect(self, state):
         if state:
-            self.rpc_client.set_jsonrpc_client_url(self.rpc_server_url)
+            self.rpc_client.set_jsonrpc_client_url(self.user_config.rpc_url)
             self.rpc_client.connect_jsonrpc_server(True)
             self.user_config.lock_edit_line_all(True)
         else:
@@ -334,6 +338,9 @@ class MainWindow(QWidget):
 
 async def update_ui(main_window):
     while True:
+        if main_window.controller.joystick is None:
+            await asyncio.sleep(1.0)
+            continue
         actions = main_window.controller.get_actions()
         main_window.update_action_buttons(actions)
         await asyncio.sleep(0.01)  # Update interval
@@ -342,11 +349,10 @@ async def update_ui(main_window):
 async def main():
     app = QApplication(sys.argv)
 
-    rtsp_url = "rtsp://rov:rov@192.168.137.132:554/"
-    rpc_server_url = "http://192.168.137.219:8888/"
+    my_user_config = user_config()
     controller = Controller()
-    rpc_client = RpcClient(rpc_server_url)
-    main_window = MainWindow(controller, rtsp_url, rpc_client, rpc_server_url)
+    rpc_client = RpcClient(my_user_config.rpc_url)
+    main_window = MainWindow(my_user_config, controller,  rpc_client)
 
     # Show the window
     main_window.show()

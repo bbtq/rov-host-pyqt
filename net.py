@@ -1,10 +1,39 @@
-import json
 
+import cv2
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QPixmap, QTransform, QStandardItemModel, QStandardItem
 from jsonrpcclient import request
 import requests
 import asyncio
 from PyQt6.QtWidgets import QLabel, QTreeView, QVBoxLayout
+
+
+class VideoStream(QObject):
+    frame_received = pyqtSignal(object)
+
+    def __init__(self, rtsp_url):
+        super().__init__()
+        self.rtsp_url = rtsp_url
+        self.running = False
+
+    def start(self):
+        self.running = True
+        cap = cv2.VideoCapture(self.rtsp_url)
+        if not cap.isOpened():
+            print("Failed to open RTSP stream")
+            self.running = False
+            return
+
+        while self.running:
+            ret, frame = cap.read()
+            if ret:
+                self.frame_received.emit(frame)
+            cv2.waitKey(30)
+
+        cap.release()
+
+    def stop(self):
+        self.running = False
 
 
 class RpcClient:

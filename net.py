@@ -1,3 +1,4 @@
+import json
 
 import cv2
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -28,7 +29,7 @@ class VideoStream(QObject):
             ret, frame = cap.read()
             if ret:
                 self.frame_received.emit(frame)
-            cv2.waitKey(30)
+            cv2.waitKey(3)
 
         cap.release()
 
@@ -41,7 +42,7 @@ class RpcClient:
         self.running = True
         self.rpc_server_url = rpc_server_url
         self.unconnected = True
-        self.get_info_time = 0.1
+        self.get_info_time = 5.0
 
         self.machine_info = {}
 
@@ -51,17 +52,16 @@ class RpcClient:
     def connect_jsonrpc_server(self, state: bool):
         self.unconnected = not state
 
-    def send_joystick(self, actions):
+    def send_jsonrpc(self, method: str, param):
         if self.unconnected:
             return
         # Prepare JSON-RPC requests using params dictionary
         requests_list = [
-            request("move", params={"rot": actions["rot"], "x": actions["x"], "y": actions["y"], "z": actions["z"]}),
-            request("set_depth_locked", params=[actions["depth_locked"]]),
-            request("set_direction_locked", params=[actions["direction_locked"]]),
-            request("catch", params=[actions["catch"]])
+            request(
+                method=method,
+                params=param
+            ),
         ]
-
         # Send the requests to the server
         response = requests.post(self.rpc_server_url, json=requests_list)
         # Print the response from the server

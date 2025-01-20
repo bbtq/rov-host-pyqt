@@ -1,7 +1,19 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QStandardItemModel, QStandardItem, QFont
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFrame, QSplitter, QLineEdit, QCheckBox, QHBoxLayout,
-                             QLabel, QProgressBar, QTreeView)
+                             QLabel, QProgressBar, QTreeView, QCompleter)
+import os
+import sys
+
+
+# 获取程序所在目录
+def resource_path(relative_path):
+    """获取资源的绝对路径"""
+    try:
+        base_path = sys._MEIPASS  # PyInstaller 打包后的临时目录
+    except Exception:
+        base_path = os.path.abspath(".")  # 开发环境中的当前目录
+    return os.path.join(base_path, relative_path)
 
 
 class UserConfig(QWidget):
@@ -14,6 +26,9 @@ class UserConfig(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        rpc_text_tip = QLabel("通讯设置：机器URL")
+        video_text_tip = QLabel("视频设置：RTSP视频流URL")
+
         rpc_save_button = QPushButton('保存')
         rpc_save_button.setFixedWidth(40)
         rpc_save_button.clicked.connect(self.save_rpc_url)
@@ -24,14 +39,19 @@ class UserConfig(QWidget):
         rpc_url_edit_line = self.rpc_url_edit_line
         rpc_url_edit_line.setFixedWidth(250)
         rpc_url_edit_line.setText(self.rpc_url)
+        rpc_url_edit_line.setCompleter(QCompleter(["http://192.168.137.219:8888/"]))
 
         video_url_edit_line = self.video_url_edit_line
         video_url_edit_line.setFixedWidth(250)
         video_url_edit_line.setText(self.video_url)
+        video_url_edit_line.setCompleter(QCompleter(["rtsp://rov:rov@192.168.137.123:554/",
+                                                     "rtsp://rov:rov@192.168.137.132:554/"]))
 
         main_layout = QVBoxLayout()
+        main_layout.addWidget(rpc_text_tip)
         main_layout.addWidget(rpc_url_edit_line)
         main_layout.addWidget(rpc_save_button)
+        main_layout.addWidget(video_text_tip)
         main_layout.addWidget(video_url_edit_line)
         main_layout.addWidget(video_save_button)
 
@@ -39,6 +59,10 @@ class UserConfig(QWidget):
         self.setFixedHeight(220)  # 增加高度以容纳拨动开关
 
         self.setLayout(main_layout)
+
+    def text_show_again(self):
+        self.rpc_url_edit_line.setText(self.rpc_url)
+        self.video_url_edit_line.setText(self.video_url)
 
     def save_rpc_url(self):
         self.rpc_url = self.rpc_url_edit_line.text()
@@ -76,8 +100,12 @@ class UserConfig(QWidget):
 
 
 class CleanerTaskWindow(QWidget):
-    def __init__(self):
+    def __init__(self, rpc_client):
         super().__init__()
+        self.rpc_client = rpc_client
+        self.mode = {
+            "m": 0  # default
+        }
         self.setWindowTitle("自动清刷监控窗口")
         self.setGeometry(100, 100, 800, 600)
         self.setMinimumSize(800, 600)
@@ -91,7 +119,7 @@ class CleanerTaskWindow(QWidget):
 
         # 加载图片
         self.image_label = QLabel()
-        pixmap = QPixmap("./icons/machine/test_machine.png")  # 机器机型图
+        pixmap = QPixmap(resource_path("./icons/machine/test_machine.png"))  # 机器机型图
         self.image_label.setPixmap(pixmap)
         self.image_label.setFixedSize(300, 300)
         self.image_label.setScaledContents(True)
@@ -153,14 +181,16 @@ class CleanerTaskWindow(QWidget):
         # 左侧垂直布局
         left_layout = QVBoxLayout()
 
-        # 按钮
-        self.button = QPushButton("自动清刷")
-        left_layout.addWidget(self.button)
 
         # 复选框
         self.checkbox1 = QCheckBox("模式1")
         self.checkbox2 = QCheckBox("模式2")
         self.checkbox3 = QCheckBox("模式3")
+        # 按钮
+        self.button = QPushButton("自动清刷")
+        self.button.clicked.connect(self.send_auto_task)
+
+        left_layout.addWidget(self.button)
         left_layout.addWidget(self.checkbox1)
         left_layout.addWidget(self.checkbox2)
         left_layout.addWidget(self.checkbox3)
@@ -218,6 +248,14 @@ class CleanerTaskWindow(QWidget):
 
         self.setLayout(main_layout)
 
+    def send_auto_task(self):
+        if self.checkbox1.isChecked():
+            self.mode["m"] = 0
+        if self.checkbox2.isChecked():
+            self.mode["m"] = 1
+        if self.checkbox3.isChecked():
+            self.mode["m"] = 2
+        self.rpc_client.send_jsonrpc("mode", self.mode)
 
 
 

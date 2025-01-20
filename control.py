@@ -5,6 +5,18 @@ import pygame
 from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QGridLayout, QPushButton
+import os
+import sys
+
+
+# 获取程序所在目录
+def resource_path(relative_path):
+    """获取资源的绝对路径"""
+    try:
+        base_path = sys._MEIPASS  # PyInstaller 打包后的临时目录
+    except Exception:
+        base_path = os.path.abspath(".")  # 开发环境中的当前目录
+    return os.path.join(base_path, relative_path)
 
 
 class Controller:
@@ -63,18 +75,18 @@ class Controller:
             print("No joystick connected.")
 
     async def poll_events(self):
-        while self.running:
-            if pygame.joystick.get_count() > 0:
-                if pygame.joystick.Joystick(0).get_name() != self.joystick.get_name():
-                    self.joystick = pygame.joystick.Joystick(0)
-                    self.joystick.init()
-            else:
-                self.joystick = None
-                await asyncio.sleep(0.5)
-                continue
+        if self.joystick is None and pygame.joystick.get_count() > 0:
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+        elif pygame.joystick.get_count() == 0:
+            self.joystick = None
+            # print("control")
+            return
+        else:
+            joystick = self.joystick
             # if self.joystick_unlock:
             #     continue
-            joystick = self.joystick
+            # print("control 2")
             pygame.event.pump()  # Make sure we only call this while running
 
             for i in range(joystick.get_numaxes()):
@@ -159,8 +171,6 @@ class Controller:
                         self.track["l"] = -0.5
                         self.track["r"] = -1.0
 
-            await asyncio.sleep(0.01)
-
     def get_actions(self):
         actions = self.actions.copy()
         return actions
@@ -220,24 +230,24 @@ class ActionsUi:
 
         # Define action buttons and corresponding icons
         action_icons = {
-            "left_rot": "./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png",  # 左旋
-            "go": "./icons/Adwaita/32x32/actions/go-up-symbolic.symbolic.png",  # 前
-            "right_rot": "./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png",  # 右旋
-            "left": "./icons/Adwaita/32x32/actions/go-next-symbolic-rtl.symbolic.png",  # 左
-            "right": "./icons/Adwaita/32x32/actions/go-next-symbolic.symbolic.png",  # 右
-            "down": "./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png",  # 下降
-            "back": "./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png",  # 后
-            "up": "./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png",  # 上升
-            "raise": "./icons/Adwaita/32x32/actions/media-skip-backward-symbolic.symbolic.png",  # 仰头
-            "wheel_go": "./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png",  # 履带-前进
-            "prone": "./icons/Adwaita/32x32/actions/media-skip-forward-symbolic.symbolic.png",  # 俯
-            "wheel_left": "./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png",  # 履带-左转
-            "wheel_right": "./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png",  # 履带-右转
-            "clear_shift_up": "./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png",  # 清刷盘-升档
-            "wheel_back": "./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png",  # 履带-后退
-            "clear_shift_down": "./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png",  # 清刷盘-降档
-            "light_shift_up": "./icons/Adwaita/32x32/status/daytime-sunrise-symbolic.symbolic.png",  # 灯光-增强
-            "light_shift_down": "./icons/Adwaita/32x32/status/daytime-sunset-symbolic.symbolic.png",  # 灯光-减弱
+            "left_rot": resource_path("./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png"),  # 左旋
+            "go": resource_path("./icons/Adwaita/32x32/actions/go-up-symbolic.symbolic.png"),  # 前
+            "right_rot": resource_path("./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png"),  # 右旋
+            "left": resource_path("./icons/Adwaita/32x32/actions/go-next-symbolic-rtl.symbolic.png"),  # 左
+            "right": resource_path("./icons/Adwaita/32x32/actions/go-next-symbolic.symbolic.png"),  # 右
+            "down": resource_path("./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png"),  # 下降
+            "back": resource_path("./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png"),  # 后
+            "up": resource_path("./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png"),  # 上升
+            "raise": resource_path("./icons/Adwaita/32x32/actions/media-skip-backward-symbolic.symbolic.png"),  # 仰头
+            "wheel_go": resource_path("./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png"),  # 履带-前进
+            "prone": resource_path("./icons/Adwaita/32x32/actions/media-skip-forward-symbolic.symbolic.png"),  # 俯
+            "wheel_left": resource_path("./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png"),  # 履带-左转
+            "wheel_right": resource_path("./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png"),  # 履带-右转
+            "clear_shift_up": resource_path("./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png"),  # 清刷盘-升档
+            "wheel_back": resource_path("./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png"),  # 履带-后退
+            "clear_shift_down": resource_path("./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png"),  # 清刷盘-降档
+            "light_shift_up": resource_path("./icons/Adwaita/32x32/status/daytime-sunrise-symbolic.symbolic.png"),  # 灯光-增强
+            "light_shift_down": resource_path("./icons/Adwaita/32x32/status/daytime-sunset-symbolic.symbolic.png"),  # 灯光-减弱
 
 
         }
@@ -295,38 +305,9 @@ class ActionsUi:
         # print("******************************\n")
         for key, value in actions.items():
             if isinstance(value, bool):
-                # match key:
-                #     case "brush_button0":
-                #         print("----------------------brush_button 0 --------------------------")
-                #         if value:
-                #             self.action_buttons["clear_shift_up"].setEnabled(True)
-                #         else:
-                #             self.action_buttons["clear_shift_up"].setEnabled(False)
-                #     case "brush_button1":
-                #         if value:
-                #             self.action_buttons["clear_shift_down"].setEnabled(True)
-                #         else:
-                #             self.action_buttons["clear_shift_down"].setEnabled(False)
-                #
-                #     case "light_button0":
-                #         if value:
-                #             self.action_buttons["light_shift_up"].setEnabled(True)
-                #         else:
-                #             self.action_buttons["light_shift_up"].setEnabled(False)
-                #
-                #     case "light_button1":
-                #         if value:
-                #             self.action_buttons["light_shift_down"].setEnabled(True)
-                #         else:
-                #             self.action_buttons["light_shift_down"].setEnabled(False)
                 # 如果值是布尔类型
                 if value:
                     print(f"Action '{key}' is locked")
-                #     # 这里可以添加具体的锁定逻辑，例如：
-                #     # if action == "depth_locked":
-                #     #     lock_depth()
-                #     # elif action == "direction_locked":
-                #     #     lock_direction()
                 else:
                     print(f"Action '{key}' is unlocked")
 

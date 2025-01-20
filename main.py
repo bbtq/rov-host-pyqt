@@ -1,6 +1,9 @@
 import sys
 import asyncio
-from PyQt6.QtCore import Qt, QSize, QPoint
+from asyncio import Lock
+
+from qasync import QEventLoop, asyncSlot
+from PyQt6.QtCore import Qt, QSize, QPoint, QTimer
 from PyQt6.QtGui import QIcon, QImage, QPixmap, QTransform, QPainter, QMouseEvent
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QSizePolicy, \
     QGridLayout, QDockWidget, QTreeView, QSpacerItem, QDialog
@@ -130,9 +133,10 @@ class MainWindow(QWidget):
         self.controller = controller
         self.rpc_client = rpc_client
         self.actions_layout = ActionsUi()
-        self.cleaner_configWindow = CleanerTaskWindow()
+        self.cleaner_configWindow = CleanerTaskWindow(self.rpc_client)
         self.video_thread = None
         self.init_ui()
+        self.tasks = []  # 用于追踪所有任务
 
 
         # 用于窗口拖动和缩放的变量
@@ -141,6 +145,16 @@ class MainWindow(QWidget):
         self.dragging = False
         self.border_width = 10  # 可拖拽缩放的边框宽度
         self.resize_direction = None  # 缩放方向
+
+        # 设置定时器刷新事件
+        self.poll_lock = Lock()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.poll_events)
+        self.timer.start(10)  # 每 10 毫秒检查一次事件
+
+    def _start_poll_event(self):
+        task = asyncio.create_task(self.poll_events())
+        self.tasks.append(task)
 
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
@@ -264,8 +278,8 @@ class MainWindow(QWidget):
         info_box = FloatingWindow(info_show_layout)
         info_box.setGeometry(x + window_geometry.width(), y+220, 100, 100)
         self.info_box = info_box
-        # self.info_box.show()
-        self.info_box.hide()
+        self.info_box.show()
+        # self.info_box.hide()
 
         # *******************************************************************************************************
         # ***********************************  初始界面最终构建  **************************************************
@@ -295,6 +309,7 @@ class MainWindow(QWidget):
     # 侧边配置窗口隐藏函数
     def toggle_config_sidebar_view(self, state):
         if state:
+            self.user_config.text_show_again()
             self.user_config.show()
         else:
             self.user_config.hide()
@@ -324,6 +339,12 @@ class MainWindow(QWidget):
 
     # 退出程序
     def closeEvent(self, event):
+
+        self.timer.stop()  # 停止定时器
+        for task in self.tasks:
+            task.cancel()  # 取消所有任务
+        self.tasks.clear()  # 清理任务列表
+
         # Stop video stream
         if self.video_thread:
             self.video_thread.stop()
@@ -364,9 +385,10 @@ class MainWindow(QWidget):
     # 上位机 - 机器 链接？
     def toggle_jsonrpc_connect(self, state):
         if state:
-            self.rpc_client.set_jsonrpc_client_url(self.user_config.rpc_url)
-            self.rpc_client.connect_jsonrpc_server(True)
-            self.user_config.lock_edit_line_all(True)
+            if self.rpc_client.is_url_accessible() :
+                self.rpc_client.set_jsonrpc_client_url(self.user_config.rpc_url)
+                self.rpc_client.connect_jsonrpc_server(True)
+                self.user_config.lock_edit_line_all(True)
         else:
             self.rpc_client.connect_jsonrpc_server(False)
             self.user_config.lock_edit_line_all(False)
@@ -465,19 +487,18 @@ class MainWindow(QWidget):
         self.setGeometry(rect)
         self.drag_position = event.globalPosition().toPoint()
 
+    @asyncSlot()
+    async def poll_events(self):
+        async with self.poll_lock:
+            await self.rpc_client.send_get_info(self.machine_label, self.info_tree,
+                                                self.cleaner_configWindow.tree_view)
+            await self.controller.poll_events()
 
-# 更新控制台按钮 任务
-async def update_ui(main_window):
-    while True:
-        if main_window.controller.joystick is None:
-            await asyncio.sleep(1.0)
-            continue
-        actions = main_window.controller.get_actions()
-        track, track_hat = main_window.controller.get_track()
-        brush, brush_button = main_window.controller.get_brush()
-        light, light_button = main_window.controller.get_light()
-        main_window.update_action_buttons(actions, track, track_hat, brush, brush_button, light, light_button)
-        await asyncio.sleep(0.01)  # Update interval
+            actions = self.controller.get_actions()
+            track, track_hat = self.controller.get_track()
+            brush, brush_button = self.controller.get_brush()
+            light, light_button = self.controller.get_light()
+            self.update_action_buttons(actions, track, track_hat, brush, brush_button, light, light_button)
 
 
 async def main():
@@ -491,23 +512,13 @@ async def main():
     # Show the window
     main_window.show()
 
-    # Async tasks
-    tasks = [
-        asyncio.create_task(controller.poll_events()),
-        asyncio.create_task(update_ui(main_window)),
-        asyncio.create_task(rpc_client.send_get_info(main_window.machine_label, main_window.info_tree)),
-    ]
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
 
-    try:
-        await asyncio.gather(*tasks)
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        loop = asyncio.get_event_loop()
+    with loop:
+        loop.run_forever()
+
         print(f"quit")
-    # 在程序退出前关闭事件循环
-        loop.close()
-        sys.exit(app.exec())
 
 
 if __name__ == "__main__":

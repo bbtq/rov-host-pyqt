@@ -1,8 +1,10 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFrame, QSplitter, QLineEdit)
+from PyQt6.QtGui import QPixmap, QStandardItemModel, QStandardItem, QFont
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFrame, QSplitter, QLineEdit, QCheckBox, QHBoxLayout,
+                             QLabel, QProgressBar, QTreeView)
 
 
-class user_config(QWidget):
+class UserConfig(QWidget):
     def __init__(self):
         super().__init__()
         self.rpc_url = "http://192.168.137.219:8888/"
@@ -12,7 +14,6 @@ class user_config(QWidget):
         self.init_ui()
 
     def init_ui(self):
-
         rpc_save_button = QPushButton('保存')
         rpc_save_button.setFixedWidth(40)
         rpc_save_button.clicked.connect(self.save_rpc_url)
@@ -35,7 +36,7 @@ class user_config(QWidget):
         main_layout.addWidget(video_save_button)
 
         self.setFixedWidth(300)
-        self.setFixedHeight(200)
+        self.setFixedHeight(220)
 
         self.setLayout(main_layout)
 
@@ -72,11 +73,3 @@ class user_config(QWidget):
     def lock_edit_line_all(self, state: bool):
         self.lock_rpc_url_edit(state)
         self.lock_video_url_edit(state)
-
-
-
-
-
-
-
-

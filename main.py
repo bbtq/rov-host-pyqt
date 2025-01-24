@@ -1,15 +1,22 @@
 import sys
 import asyncio
-from PyQt6.QtCore import Qt, QSize, QPoint
+from asyncio import Lock
+
+from PyQt6.QtCore import Qt, QSize, QPoint, QTimer
 from PyQt6.QtGui import QIcon, QImage, QPixmap, QTransform, QPainter, QMouseEvent
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QSizePolicy, \
-    QGridLayout, QDockWidget, QTreeView, QSpacerItem
+     QTreeView, QSpacerItem, QDialog
 import cv2
+from qasync import asyncSlot, QEventLoop
+
 from control import Controller, ActionsUi
 from net import RpcClient, VideoStream
-from user_config import user_config
+from user_config import UserConfig
 
 
+# *******************************************************************************************************
+# ***********************************  自定义样式1 - 自定义标题栏  ********************************************
+#
 class CustomTitleBar(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -20,8 +27,7 @@ class CustomTitleBar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # 标题文本
-        self.title_label = QLabel("水下机器人上位机")
-        self.title_label.setStyleSheet("color: gray; font-size: 12px;")
+        self.title_label = QLabel("     水下机器人上位机 v0.2.2.2501_Alpha")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # 最小化按钮
@@ -34,7 +40,29 @@ class CustomTitleBar(QWidget):
 
         # 关闭按钮
         self.close_button = QPushButton("×")
+        self.close_button.setObjectName("close_button")  # 设置 objectName
         self.close_button.clicked.connect(self.parent.close)
+
+        # 设置标题栏的背景颜色
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                color: gray;  /* 按钮文字颜色 */
+                font-size: 16px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #d0d0d0;  /* 鼠标悬停时的背景颜色 */
+            }
+            QPushButton#close_button:hover {
+                background-color: #ff0000;  /* 关闭按钮悬停时的背景颜色 */
+            }
+            QLabel {
+                color: gray;  /* 标题文字颜色 */
+                font-size: 12px;
+            }
+        """)
 
         # 使用QSpacerItem在标题文本左右留白，使其居中
         left_spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -48,23 +76,6 @@ class CustomTitleBar(QWidget):
         layout.addWidget(self.maximize_button)
         layout.addWidget(self.close_button)
 
-        # 设置标题栏样式
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-                color: white;
-                font-size: 16px;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #555;
-            }
-            QPushButton#close_button:hover {
-                background-color: #ff0000;
-            }
-        """)
-
     def toggle_maximize(self):
         """切换最大化/还原窗口"""
         if self.parent.isMaximized():
@@ -72,15 +83,59 @@ class CustomTitleBar(QWidget):
         else:
             self.parent.showMaximized()
 
+
+# *******************************************************************************************************
+# ***********************************  自定义样式2 - 自定义浮动窗口  ******************************************
+#
+class FloatingWindow(QDialog):
+    def __init__(self, user_layout: QVBoxLayout):
+        super().__init__()
+        # 启用可拉伸和最大化/最小化按钮
+        self.setSizeGripEnabled(True)  # 允许右下角拉伸
+        # 设置窗口标志：无边框、置顶、Tool类型（允许超出父窗口边界）
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            # Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+
+        self.setLayout(user_layout)
+
+        # 初始化用于拖动的变量
+        self.dragging = False
+        self.drag_position = QPoint()
+
+    # 鼠标按下事件
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    # 鼠标移动事件
+    def mouseMoveEvent(self, event):
+        if self.dragging and event.buttons() == Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self.drag_position)
+            event.accept()
+
+    # 鼠标释放事件
+    def mouseReleaseEvent(self, event):
+        self.dragging = False
+        event.accept()
+
+
+# *******************************************************************************************************
+# ***********************************  主窗口类  **********************************************************
+#
 class MainWindow(QWidget):
     def __init__(self, my_user_config, controller, rpc_client):
         super().__init__()
+        self.tasks = []  # 用于追踪所有任务
         self.user_config = my_user_config
         self.controller = controller
-        self.actions_layout = ActionsUi()
         self.rpc_client = rpc_client
+        self.actions_layout = ActionsUi()
         self.video_thread = None
-        self.last_actions = {}
         self.init_ui()
 
 
@@ -91,6 +146,13 @@ class MainWindow(QWidget):
         self.border_width = 10  # 可拖拽缩放的边框宽度
         self.resize_direction = None  # 缩放方向
 
+        # 设置定时器刷新事件
+        self.poll_lock = Lock()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.poll_events)
+        self.timer.start(10)  # 每 10 毫秒检查一次事件
+
+
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
         self.setGeometry(100, 100, 900, 600)
@@ -99,12 +161,12 @@ class MainWindow(QWidget):
         # 创建自定义标题栏
         self.title_bar = CustomTitleBar(self)
         self.title_bar.setFixedHeight(27)
-        # 设置窗口的样式表以实现圆角矩形
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #2E3440;
-            }
-        """)
+        # 设置窗口的样式表
+        # self.setStyleSheet("""
+        #     QWidget {
+        #         background-color: #ffd2d2;
+        #     }
+        # """)
         # 获取屏幕分辨率并计算居中坐标
         screen = QApplication.primaryScreen()
         screen_geometry = screen.geometry()
@@ -121,7 +183,7 @@ class MainWindow(QWidget):
         #
         self.video_label = QLabel("Video Stream")
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_label.setStyleSheet("background-color: black;")
+        # self.video_label.setStyleSheet("background-color: #fff3af;")
         self.video_label.setScaledContents(True)  # Allow QLabel to scale its contents
         self.video_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -168,16 +230,16 @@ class MainWindow(QWidget):
         # *******************************************************************************************************
         # ***********************************  两种浮动窗口初始化  **************************************************
         #
-
-        # 创建一个QDockWidget -- 用来展示手柄动作信息
-        actions_dock_widget = QDockWidget("云控制台", self)
-        actions_dock_widget.setFloating(True)  # 设置为浮动状态
-        actions_dock_widget.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)  # 允许移动
-        actions_dock_widget.setGeometry(x + window_geometry.width(), y, 50, 100)
-        # 创建一个QWidget作为QDockWidget的内容
-        actions_dock_widget_content = QWidget()
-        actions_dock_widget_content.setLayout(self.actions_layout.build_actions_gridlayout())
-        actions_dock_widget.setWidget(actions_dock_widget_content)
+        # 设置窗口内容
+        layout = QVBoxLayout()
+        label = QLabel("控制灵动岛")
+        layout.addWidget(label)
+        layout.addLayout(self.actions_layout.build_actions_gridlayout())
+        control_box = FloatingWindow(layout)
+        control_box.setGeometry(x + window_geometry.width(), y, 50, 100)
+        self.control_box = control_box
+        self.control_box.show()
+        # self.control_box.hide()
 
 
         # 加载原始图片
@@ -188,8 +250,8 @@ class MainWindow(QWidget):
         rotated_pixmap = original_pixmap.transformed(transform)
         # 创建一个QLabel来显示机器图片
         self.machine_label = QLabel()
-        self.machine_label.setFixedSize(90, 90)  # 设置QLabel的固定大小为64x64像素
-        self.machine_label.setScaledContents(True)  # 启用图片自适应QLabel大小[^41^]
+        self.machine_label.setFixedSize(90, 90)  # 设置QLabel的固定大小
+        self.machine_label.setScaledContents(True)  # 启用图片自适应QLabel大小
         self.machine_label.setPixmap(rotated_pixmap)
 
         self.info_tree = QTreeView()
@@ -197,18 +259,16 @@ class MainWindow(QWidget):
         info_layout.addWidget(self.info_tree)
 
         info_show_layout = QVBoxLayout()
+        label = QLabel("信息灵动岛")
+        info_show_layout.addWidget(label)
         info_show_layout.addWidget(self.machine_label)
         info_show_layout.addLayout(info_layout)
 
-        # 创建一个QDockWidget -- 用来展示手柄动作信息
-        info_dock_widget = QDockWidget("ROV 状态监控岛", self)
-        info_dock_widget.setFloating(True)  # 设置为浮动状态
-        info_dock_widget.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)  # 允许移动
-        info_dock_widget.setGeometry(x + window_geometry.width(), y+170, 100, 100)
-        # 创建一个QWidget作为QDockWidget的内容
-        info_dock_widget_content = QWidget()
-        info_dock_widget_content.setLayout(info_show_layout)
-        info_dock_widget.setWidget(info_dock_widget_content)
+        info_box = FloatingWindow(info_show_layout)
+        info_box.setGeometry(x + window_geometry.width(), y+250, 200, 100)
+        self.info_box = info_box
+        self.info_box.show()
+        # self.info_box.hide()
 
         # *******************************************************************************************************
         # ***********************************  初始界面最终构建  **************************************************
@@ -264,6 +324,12 @@ class MainWindow(QWidget):
 
     # 退出程序
     def closeEvent(self, event):
+        # 停止定时器
+        if self.timer.isActive():
+            self.timer.stop()
+        self.timer.deleteLater()  # 删除定时器对象
+        self.timer = None  # 释放引用
+
         # Stop video stream
         if self.video_thread:
             self.video_thread.stop()
@@ -278,12 +344,28 @@ class MainWindow(QWidget):
         QApplication.instance().quit()
         event.accept()
 
-    # 控制台 动作按钮状态更新
-    def update_action_buttons(self, actions):
-        if self.last_actions != actions:
-            self.rpc_client.send_joystick(actions)
-            self.last_actions = actions
+    # 控制台 动作按钮状态更新 同时发送控制
+    def update_action_buttons(self, actions, track, track_hat, brush, brush_button, light, light_button):
+        if self.controller.last_actions != actions:
+            self.rpc_client.send_jsonrpc("axis", actions)
+            self.controller.last_actions = actions
             self.actions_layout.update_action_buttons(actions)
+        if self.controller.last_track != track:
+            self.rpc_client.send_jsonrpc("track", track)
+            self.controller.last_track = track
+            self.actions_layout.update_action_buttons(track_hat)
+        if self.controller.last_brush_button != brush_button:
+            self.actions_layout.update_action_buttons(brush_button)
+            self.controller.last_brush_button = brush_button
+            if self.controller.last_brush != brush:
+                self.rpc_client.send_jsonrpc("brush", brush)
+                self.controller.last_brush = brush
+        if self.controller.last_light_button != light_button:
+            self.actions_layout.update_action_buttons(light_button)
+            self.controller.last_light_button = light_button
+            if self.controller.last_light != light:
+                self.rpc_client.send_jsonrpc("light", light)
+                self.controller.last_light = light
 
     # 上位机 - 机器 链接？
     def toggle_jsonrpc_connect(self, state):
@@ -389,21 +471,27 @@ class MainWindow(QWidget):
         self.setGeometry(rect)
         self.drag_position = event.globalPosition().toPoint()
 
-# 更新控制台按钮 任务
-async def update_ui(main_window):
-    while True:
-        if main_window.controller.joystick is None:
-            await asyncio.sleep(1.0)
-            continue
-        actions = main_window.controller.get_actions()
-        main_window.update_action_buttons(actions)
-        await asyncio.sleep(0.01)  # Update interval
+    @asyncSlot()
+    async def poll_events(self):
+        async with self.poll_lock:
+            print("0")
+            await self.rpc_client.send_get_info(self.machine_label, self.info_tree)
+            print("1")
+            await self.controller.poll_events()
+            print("2")
+
+            actions = self.controller.get_actions()
+            track, track_hat = self.controller.get_track()
+            brush, brush_button = self.controller.get_brush()
+            light, light_button = self.controller.get_light()
+            self.update_action_buttons(actions, track, track_hat, brush, brush_button, light, light_button)
+            print("3")
 
 
 async def main():
     app = QApplication(sys.argv)
 
-    my_user_config = user_config()
+    my_user_config = UserConfig()
     controller = Controller()
     rpc_client = RpcClient(my_user_config.rpc_url)
     main_window = MainWindow(my_user_config, controller,  rpc_client)
@@ -411,23 +499,13 @@ async def main():
     # Show the window
     main_window.show()
 
-    # Async tasks
-    tasks = [
-        asyncio.create_task(controller.poll_events()),
-        asyncio.create_task(update_ui(main_window)),
-        asyncio.create_task(rpc_client.send_get_info(main_window.machine_label, main_window.info_tree)),
-    ]
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
 
-    try:
-        await asyncio.gather(*tasks)
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        loop = asyncio.get_event_loop()
+    with loop:
+        loop.run_forever()
+
         print(f"quit")
-    # 在程序退出前关闭事件循环
-        loop.close()
-        sys.exit(app.exec())
 
 
 if __name__ == "__main__":

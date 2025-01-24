@@ -13,14 +13,41 @@ class Controller:
         pygame.joystick.init()
         self.joystick = None
         self.actions = {
-            "x": 0.0,  # 左右平移
-            "y": 0.0,  # 前进后退
-            "z": 0.0,  # 上浮下沉
-            "rot": 0.0,  # 左右旋转
-            "catch": 0.0,  # 机械臂
-            "depth_locked": False,  # 深度锁定
-            "direction_locked": True  # 方向锁定
+            "ly": 0.0,
+            "lx": 0.0,      # 左摇杆的两个轴
+            "ry": 0.0,
+            "rx": 0.0,      # 右摇杆的两个轴
+            "lt": 0.0,
+            "rt": 0.0,      # 两个板机
         }
+        self.track = {
+            "l": 0.0,   # 履带左轮
+            "r": 0.0,   # 履带右轮
+        }
+        self.hat = {
+            "hat": (0.0, 0.0)
+        }
+        self.brush = {
+            "g": 0,
+        }
+        self.brush_button = {
+            "brush_button0": 0,
+            "brush_button1": 0,
+        }
+        self.light = {
+            "g": 0
+        }
+        self.light_button = {
+            "light_button0": 0,
+            "light_button1": 0,
+        }
+        self.last_actions = {}
+        self.last_track = {}
+        self.last_brush = {}
+        self.last_brush_button = {}
+        self.last_light = {}
+        self.last_light_button = {}
+
         self.joysticks_list = {}
         self.joystick_unlock = False
         self.running = True  # Flag to control polling
@@ -36,60 +63,121 @@ class Controller:
             print("No joystick connected.")
 
     async def poll_events(self):
-        while self.running:
-            if pygame.joystick.get_count() > 0:
-                if pygame.joystick.Joystick(0).get_name() != self.joystick.get_name():
-                    self.joystick = pygame.joystick.Joystick(0)
-                    self.joystick.init()
-            else:
-                self.joystick = None
-                await asyncio.sleep(0.5)
-                continue
+        if self.joystick is None and pygame.joystick.get_count() > 0:
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+        elif pygame.joystick.get_count() == 0:
+            self.joystick = None
+            # print("control")
+            return
+        else:
+            joystick = self.joystick
             # if self.joystick_unlock:
             #     continue
-            joystick = self.joystick
+            # print("control 2")
             pygame.event.pump()  # Make sure we only call this while running
 
             for i in range(joystick.get_numaxes()):
                 axis = joystick.get_axis(i)
                 match i:
-                    case 0 :
-                        self.actions["x"] = axis
-                    case 1 :
-                        self.actions["y"] = axis
-                    case 2 :
-                        self.actions["rot"] = axis
-                    case 3 :
-                        self.actions["z"] = axis
-                    case 5 :
-                        if axis > -0.8:
-                            self.actions["catch"] = -1.0
-
-            for i in range(joystick.get_numbuttons()):
-                button = joystick.get_button(i)
-                match i:
+                    case 0:
+                        self.actions["lx"] = axis
+                    case 1:
+                        self.actions["ly"] = axis
+                    case 2:
+                        self.actions["ry"] = axis
+                    case 3:
+                        self.actions["rx"] = axis
+                    case 4:
+                        self.actions["lt"] = axis
                     case 5:
-                        self.actions["catch"] = float(button)
-                    case 8:
-                        self.actions["depth_locked"] = bool(button)
-                    case 9:
-                        self.actions["direction_locked"] = bool(button)
+                        self.actions["rt"] = axis
+
+            for event in pygame.event.get():
+                if event.type == pygame.JOYBUTTONDOWN or event.type == pygame.JOYBUTTONUP:
+                    for i in range(joystick.get_numbuttons()):
+                        button = joystick.get_button(i)
+                        match i:
+                            case 0:
+                                self.light_button["light_button1"] = button
+                                if button:
+                                    if self.light["g"] == 0:
+                                        self.light["g"] = 2
+                                    else:
+                                        self.light["g"] -= 1
+                            case 1:
+                                self.brush_button["brush_button0"] = button
+                                if button:
+                                    if self.brush["g"] == 2:
+                                        self.brush["g"] = 0
+                                    else:
+                                        self.brush["g"] += 1
+                            case 2:
+                                self.brush_button["brush_button1"] = button
+                                if button:
+                                    if self.brush["g"] == 0:
+                                        self.brush["g"] = 2
+                                    else:
+                                        self.brush["g"] -= 1
+                            case 3:
+                                self.light_button["light_button0"] = button
+                                if button:
+                                    if self.light["g"] == 2:
+                                        self.light["g"] = 0
+                                    else:
+                                        self.light["g"] += 1
 
             for i in range(joystick.get_numhats()):
                 hat = joystick.get_hat(i)
-                # self.actions["x"] = hat[0] * 0.5
-                # self.actions["y"] = hat[1] * -0.5
-
-            # 遍历字典并打印每个键对应的值
-            # for key, value in self.actions.items():
-            #     print(f"The value of '{key}' is {value}")
-            # print("************* while *************\n")
-            await asyncio.sleep(0.01)  # Avoid busy-waiting
+                self.hat["hat"] = hat
+                match hat:
+                    case (0, 0):
+                        self.track["l"] = 0.0
+                        self.track["r"] = 0.0
+                    case (1, 0):
+                        self.track["l"] = 1.0
+                        self.track["r"] = -1.0
+                    case (-1, 0):
+                        self.track["l"] = -1.0
+                        self.track["r"] = 1.0
+                    case (0, 1):
+                        self.track["l"] = 1.0
+                        self.track["r"] = 1.0
+                    case (0, -1):
+                        self.track["l"] = -1.0
+                        self.track["r"] = -1.0
+                    case (1, 1):
+                        self.track["l"] = 1.0
+                        self.track["r"] = 0.5
+                    case (-1, 1):
+                        self.track["l"] = 0.5
+                        self.track["r"] = 1.0
+                    case (1, -1):
+                        self.track["l"] = -1.0
+                        self.track["r"] = -0.5
+                    case (-1, -1):
+                        self.track["l"] = -0.5
+                        self.track["r"] = -1.0
 
     def get_actions(self):
         actions = self.actions.copy()
-        # actions = []
         return actions
+
+    def get_track(self):
+        track = self.track.copy()
+        hat = self.hat.copy()
+        # actions = []
+        return track, hat
+
+    def get_brush(self):
+        brush = self.brush.copy()
+        brush_button = self.brush_button.copy()
+        return brush, brush_button
+
+    def get_light(self):
+        light = self.light.copy()
+        light_button = self.light_button.copy()
+        return light, light_button
 
     def get_joysticks_list(self):
         joystick_count = pygame.joystick.get_count()
@@ -146,6 +234,10 @@ class ActionsUi:
             "clear_shift_up": "./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png",  # 清刷盘-升档
             "wheel_back": "./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png",  # 履带-后退
             "clear_shift_down": "./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png",  # 清刷盘-降档
+            "light_shift_up": "./icons/Adwaita/32x32/status/daytime-sunrise-symbolic.symbolic.png",  # 灯光-增强
+            "light_shift_down": "./icons/Adwaita/32x32/status/daytime-sunset-symbolic.symbolic.png",  # 灯光-减弱
+
+
         }
 
         for i, (action, icon_path) in enumerate(action_icons.items()):
@@ -188,30 +280,83 @@ class ActionsUi:
                 grid_layout.addWidget(button, 5, 1)
             elif i == 15:  # 清刷盘-降档
                 grid_layout.addWidget(button, 5, 2)
+            elif i == 16:  # 灯光-增强
+                grid_layout.addWidget(button, 6, 0)
+            elif i == 17:  # 灯光-减弱
+                grid_layout.addWidget(button, 6, 2)
 
         return grid_layout
 
     def update_action_buttons(self, actions):
+        # for key, value in actions.items():
+        #     print(f"The value of '{key}' is {value}")
+        # print("******************************\n")
         for key, value in actions.items():
-            print(f"The value of '{key}' is {value}")
-        print("******************************\n")
-        for action, value in actions.items():
             if isinstance(value, bool):
+                # match key:
+                #     case "brush_button0":
+                #         print("----------------------brush_button 0 --------------------------")
+                #         if value:
+                #             self.action_buttons["clear_shift_up"].setEnabled(True)
+                #         else:
+                #             self.action_buttons["clear_shift_up"].setEnabled(False)
+                #     case "brush_button1":
+                #         if value:
+                #             self.action_buttons["clear_shift_down"].setEnabled(True)
+                #         else:
+                #             self.action_buttons["clear_shift_down"].setEnabled(False)
+                #
+                #     case "light_button0":
+                #         if value:
+                #             self.action_buttons["light_shift_up"].setEnabled(True)
+                #         else:
+                #             self.action_buttons["light_shift_up"].setEnabled(False)
+                #
+                #     case "light_button1":
+                #         if value:
+                #             self.action_buttons["light_shift_down"].setEnabled(True)
+                #         else:
+                #             self.action_buttons["light_shift_down"].setEnabled(False)
                 # 如果值是布尔类型
                 if value:
-                    print(f"Action '{action}' is locked")
-                    # 这里可以添加具体的锁定逻辑，例如：
-                    # if action == "depth_locked":
-                    #     lock_depth()
-                    # elif action == "direction_locked":
-                    #     lock_direction()
+                    print(f"Action '{key}' is locked")
+                #     # 这里可以添加具体的锁定逻辑，例如：
+                #     # if action == "depth_locked":
+                #     #     lock_depth()
+                #     # elif action == "direction_locked":
+                #     #     lock_direction()
                 else:
-                    print(f"Action '{action}' is unlocked")
+                    print(f"Action '{key}' is unlocked")
 
-            elif isinstance(value, (int, float)):
+            elif isinstance(value, int):
+                match key:
+                    case "brush_button0":
+                        if value:
+                            self.action_buttons["clear_shift_up"].setEnabled(True)
+                        else:
+                            self.action_buttons["clear_shift_up"].setEnabled(False)
+                    case "brush_button1":
+                        if value:
+                            self.action_buttons["clear_shift_down"].setEnabled(True)
+                        else:
+                            self.action_buttons["clear_shift_down"].setEnabled(False)
+
+                    case "light_button0":
+                        if value:
+                            self.action_buttons["light_shift_up"].setEnabled(True)
+                        else:
+                            self.action_buttons["light_shift_up"].setEnabled(False)
+
+                    case "light_button1":
+                        if value:
+                            self.action_buttons["light_shift_down"].setEnabled(True)
+                        else:
+                            self.action_buttons["light_shift_down"].setEnabled(False)
+
+            elif isinstance(value, float):
                 # 如果值是数值类型
-                match action:
-                    case "x":
+                match key:
+                    case "lx":
                         if value > 0.1:
                             self.action_buttons["right"].setEnabled(True)
                         elif value < -0.1:
@@ -219,7 +364,7 @@ class ActionsUi:
                         else:
                             self.action_buttons["right"].setEnabled(False)
                             self.action_buttons["left"].setEnabled(False)
-                    case "y":
+                    case "ly":
                         if value > 0.1:
                             self.action_buttons["back"].setEnabled(True)
                         elif value < -0.1:
@@ -227,7 +372,7 @@ class ActionsUi:
                         else:
                             self.action_buttons["back"].setEnabled(False)
                             self.action_buttons["go"].setEnabled(False)
-                    case "z":
+                    case "rx":
                         if value > 0.1:
                             self.action_buttons["down"].setEnabled(True)
                         elif value < -0.1:
@@ -235,7 +380,7 @@ class ActionsUi:
                         else:
                             self.action_buttons["down"].setEnabled(False)
                             self.action_buttons["up"].setEnabled(False)
-                    case "rot":
+                    case "ry":
                         if value > 0.1:
                             self.action_buttons["right_rot"].setEnabled(True)
                         elif value < -0.1:
@@ -243,6 +388,38 @@ class ActionsUi:
                         else:
                             self.action_buttons["right_rot"].setEnabled(False)
                             self.action_buttons["left_rot"].setEnabled(False)
+                    case "lt":
+                        if value > -1.0:
+                            self.action_buttons["prone"].setEnabled(True)
+                        else:
+                            self.action_buttons["prone"].setEnabled(False)
+                    case "rt":
+                        if value > -1.0:
+                            self.action_buttons["raise"].setEnabled(True)
+                        else:
+                            self.action_buttons["raise"].setEnabled(False)
+            elif isinstance(value, tuple):
+                match key:
+                    case "hat":
+                        # print("0:{}, 1:{}".format(value[0], value[1]))
+                        if value[0] > 0:
+                            self.action_buttons["wheel_right"].setEnabled(True)
+                            self.action_buttons["wheel_left"].setEnabled(False)
+                        elif value[0] < 0:
+                            self.action_buttons["wheel_right"].setEnabled(False)
+                            self.action_buttons["wheel_left"].setEnabled(True)
+                        else:
+                            self.action_buttons["wheel_right"].setEnabled(False)
+                            self.action_buttons["wheel_left"].setEnabled(False)
+                        if value[1] > 0:
+                            self.action_buttons["wheel_go"].setEnabled(True)
+                            self.action_buttons["wheel_back"].setEnabled(False)
+                        elif value[1] < 0:
+                            self.action_buttons["wheel_go"].setEnabled(False)
+                            self.action_buttons["wheel_back"].setEnabled(True)
+                        else:
+                            self.action_buttons["wheel_go"].setEnabled(False)
+                            self.action_buttons["wheel_back"].setEnabled(False)
             else:
-                print(f"Unknown type for action '{action}'")
+                print(f"Unknown type for action '{key}'")
     pass

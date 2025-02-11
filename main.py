@@ -152,10 +152,6 @@ class MainWindow(QWidget):
         self.timer.timeout.connect(self.poll_events)
         self.timer.start(10)  # 每 10 毫秒检查一次事件
 
-    def _start_poll_event(self):
-        task = asyncio.create_task(self.poll_events())
-        self.tasks.append(task)
-
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
         self.setGeometry(100, 100, 900, 600)
@@ -340,10 +336,11 @@ class MainWindow(QWidget):
     # 退出程序
     def closeEvent(self, event):
 
-        self.timer.stop()  # 停止定时器
-        for task in self.tasks:
-            task.cancel()  # 取消所有任务
-        self.tasks.clear()  # 清理任务列表
+        # 停止定时器
+        if self.timer.isActive():
+            self.timer.stop()
+        self.timer.deleteLater()  # 删除定时器对象
+        self.timer = None  # 释放引用
 
         # Stop video stream
         if self.video_thread:

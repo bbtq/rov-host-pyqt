@@ -9,16 +9,6 @@ import os
 import sys
 
 
-# 获取程序所在目录
-def resource_path(relative_path):
-    """获取资源的绝对路径"""
-    try:
-        base_path = sys._MEIPASS  # PyInstaller 打包后的临时目录
-    except Exception:
-        base_path = os.path.abspath(".")  # 开发环境中的当前目录
-    return os.path.join(base_path, relative_path)
-
-
 class VideoStream(QObject):
     frame_received = pyqtSignal(object)
 
@@ -36,10 +26,13 @@ class VideoStream(QObject):
             return
 
         while self.running:
-            ret, frame = cap.read()
+            print("1")
+            while cap.grab():  # 快速抓取帧，不解码
+                break
+            print("2")
+            ret, frame = cap.retrieve()  # 解码最后一帧
             if ret:
                 self.frame_received.emit(frame)
-            cv2.waitKey(3)
 
         cap.release()
 
@@ -85,7 +78,7 @@ class RpcClient:
 
     async def send_get_info(self, pic_widget: QLabel, info_tree: QTreeView, clean_info_tree: QTreeView):
         # 加载原始图片
-        self.original_pixmap = QPixmap(resource_path("./icons/machine/test_machine.png"))
+        self.original_pixmap = QPixmap("./icons/machine/test_machine.png")
         angle = 0
         if self.unconnected:
             return

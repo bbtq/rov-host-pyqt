@@ -154,6 +154,7 @@ class MainWindow(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
+        self.setWindowIcon(QIcon('./icons/app_icon.ico'))
         self.setGeometry(100, 100, 900, 600)
         # 隐藏默认标题栏
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -193,21 +194,21 @@ class MainWindow(QWidget):
         # ***********************************  顶部交互按钮初始化  **************************************************
         #
         video_en_button = QPushButton()
-        video_en_button.setIcon(QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/devices/computer-symbolic.symbolic.png"))
+        video_en_button.setIcon(QIcon("./icons/Adwaita/32x32/devices/computer-symbolic.symbolic.png"))
         video_en_button.setCheckable(True)
         video_en_button.setFixedSize(30, 30)
         video_en_button.clicked[bool].connect(self.toggle_video_stream)
 
         connect_button = QPushButton()
         connect_button.setIcon(
-            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/actions/mail-send-receive-symbolic.symbolic.png"))
+            QIcon("./icons/Adwaita/32x32/actions/mail-send-receive-symbolic.symbolic.png"))
         connect_button.setCheckable(True)
         connect_button.setFixedSize(30, 30)
         connect_button.clicked[bool].connect(self.toggle_jsonrpc_connect)
 
         config_sidebar_button = QPushButton()
         config_sidebar_button.setIcon(
-            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/actions/sidebar-show-right-symbolic.symbolic.png")
+            QIcon("./icons/Adwaita/32x32/actions/sidebar-show-right-symbolic.symbolic.png")
         )
         config_sidebar_button.setCheckable(True)
         config_sidebar_button.setFixedSize(30, 30)
@@ -215,7 +216,7 @@ class MainWindow(QWidget):
 
         show_cleaner_button = QPushButton()
         show_cleaner_button.setIcon(
-            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/devices/phone-apple-iphone-symbolic.symbolic.png")
+            QIcon("./icons/Adwaita/32x32/devices/phone-apple-iphone-symbolic.symbolic.png")
         )
         show_cleaner_button.setFixedSize(30, 30)
         show_cleaner_button.clicked.connect(self.open_cleaner_task_window)
@@ -274,8 +275,8 @@ class MainWindow(QWidget):
         info_box = FloatingWindow(info_show_layout)
         info_box.setGeometry(x + window_geometry.width(), y+220, 100, 100)
         self.info_box = info_box
-        self.info_box.show()
-        # self.info_box.hide()
+        # self.info_box.show()
+        self.info_box.hide()
 
         # *******************************************************************************************************
         # ***********************************  初始界面最终构建  **************************************************

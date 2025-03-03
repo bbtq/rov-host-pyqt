@@ -9,16 +9,6 @@ import os
 import sys
 
 
-# 获取程序所在目录
-def resource_path(relative_path):
-    """获取资源的绝对路径"""
-    try:
-        base_path = sys._MEIPASS  # PyInstaller 打包后的临时目录
-    except Exception:
-        base_path = os.path.abspath(".")  # 开发环境中的当前目录
-    return os.path.join(base_path, relative_path)
-
-
 class Controller:
     def __init__(self):
         pygame.init()
@@ -230,24 +220,43 @@ class ActionsUi:
 
         # Define action buttons and corresponding icons
         action_icons = {
-            "left_rot": resource_path("./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png"),  # 左旋
-            "go": resource_path("./icons/Adwaita/32x32/actions/go-up-symbolic.symbolic.png"),  # 前
-            "right_rot": resource_path("./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png"),  # 右旋
-            "left": resource_path("./icons/Adwaita/32x32/actions/go-next-symbolic-rtl.symbolic.png"),  # 左
-            "right": resource_path("./icons/Adwaita/32x32/actions/go-next-symbolic.symbolic.png"),  # 右
-            "down": resource_path("./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png"),  # 下降
-            "back": resource_path("./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png"),  # 后
-            "up": resource_path("./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png"),  # 上升
-            "raise": resource_path("./icons/Adwaita/32x32/actions/media-skip-backward-symbolic.symbolic.png"),  # 仰头
-            "wheel_go": resource_path("./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png"),  # 履带-前进
-            "prone": resource_path("./icons/Adwaita/32x32/actions/media-skip-forward-symbolic.symbolic.png"),  # 俯
-            "wheel_left": resource_path("./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png"),  # 履带-左转
-            "wheel_right": resource_path("./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png"),  # 履带-右转
-            "clear_shift_up": resource_path("./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png"),  # 清刷盘-升档
-            "wheel_back": resource_path("./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png"),  # 履带-后退
-            "clear_shift_down": resource_path("./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png"),  # 清刷盘-降档
-            "light_shift_up": resource_path("./icons/Adwaita/32x32/status/daytime-sunrise-symbolic.symbolic.png"),  # 灯光-增强
-            "light_shift_down": resource_path("./icons/Adwaita/32x32/status/daytime-sunset-symbolic.symbolic.png"),  # 灯光-减弱
+            # "left_rot": resource_path("./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png"),  # 左旋
+            # "go": resource_path("./icons/Adwaita/32x32/actions/go-up-symbolic.symbolic.png"),  # 前
+            # "right_rot": resource_path("./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png"),  # 右旋
+            # "left": resource_path("./icons/Adwaita/32x32/actions/go-next-symbolic-rtl.symbolic.png"),  # 左
+            # "right": resource_path("./icons/Adwaita/32x32/actions/go-next-symbolic.symbolic.png"),  # 右
+            # "down": resource_path("./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png"),  # 下降
+            # "back": resource_path("./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png"),  # 后
+            # "up": resource_path("./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png"),  # 上升
+            # "raise": resource_path("./icons/Adwaita/32x32/actions/media-skip-backward-symbolic.symbolic.png"),  # 仰头
+            # "wheel_go": resource_path("./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png"),  # 履带-前进
+            # "prone": resource_path("./icons/Adwaita/32x32/actions/media-skip-forward-symbolic.symbolic.png"),  # 俯
+            # "wheel_left": resource_path("./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png"),  # 履带-左转
+            # "wheel_right": resource_path("./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png"),  # 履带-右转
+            # "clear_shift_up": resource_path("./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png"),  # 清刷盘-升档
+            # "wheel_back": resource_path("./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png"),  # 履带-后退
+            # "clear_shift_down": resource_path("./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png"),  # 清刷盘-降档
+            # "light_shift_up": resource_path("./icons/Adwaita/32x32/status/daytime-sunrise-symbolic.symbolic.png"),  # 灯光-增强
+            # "light_shift_down": resource_path("./icons/Adwaita/32x32/status/daytime-sunset-symbolic.symbolic.png"),  # 灯光-减弱
+
+            "left_rot": "./icons/Adwaita/32x32/actions/object-rotate-left-symbolic.symbolic.png",  # 左旋
+            "go": "./icons/Adwaita/32x32/actions/go-up-symbolic.symbolic.png",  # 前
+            "right_rot": "./icons/Adwaita/32x32/actions/object-rotate-right-symbolic.symbolic.png",  # 右旋
+            "left": "./icons/Adwaita/32x32/actions/go-next-symbolic-rtl.symbolic.png",  # 左
+            "right": "./icons/Adwaita/32x32/actions/go-next-symbolic.symbolic.png",  # 右
+            "down": "./icons/Adwaita/32x32/actions/go-bottom-symbolic.symbolic.png",  # 下降
+            "back": "./icons/Adwaita/32x32/actions/go-down-symbolic.symbolic.png",  # 后
+            "up": "./icons/Adwaita/32x32/actions/go-top-symbolic.symbolic.png",  # 上升
+            "raise": "./icons/Adwaita/32x32/actions/media-skip-backward-symbolic.symbolic.png",  # 仰头
+            "wheel_go": "./icons/Adwaita/32x32/ui/pan-up-symbolic.symbolic.png",  # 履带-前进
+            "prone": "./icons/Adwaita/32x32/actions/media-skip-forward-symbolic.symbolic.png",  # 俯
+            "wheel_left": "./icons/Adwaita/32x32/ui/pan-start-symbolic.symbolic.png",  # 履带-左转
+            "wheel_right": "./icons/Adwaita/32x32/ui/pan-end-symbolic.symbolic.png",  # 履带-右转
+            "clear_shift_up": "./icons/Adwaita/32x32/actions/value-increase-symbolic.symbolic.png",  # 清刷盘-升档
+            "wheel_back": "./icons/Adwaita/32x32/ui/pan-down-symbolic.symbolic.png",  # 履带-后退
+            "clear_shift_down": "./icons/Adwaita/32x32/actions/value-decrease-symbolic.symbolic.png",  # 清刷盘-降档
+            "light_shift_up": "./icons/Adwaita/32x32/status/daytime-sunrise-symbolic.symbolic.png",  # 灯光-增强
+            "light_shift_down": "./icons/Adwaita/32x32/status/daytime-sunset-symbolic.symbolic.png",  # 灯光-减弱
 
 
         }

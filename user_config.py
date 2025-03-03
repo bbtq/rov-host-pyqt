@@ -6,16 +6,6 @@ import os
 import sys
 
 
-# 获取程序所在目录
-def resource_path(relative_path):
-    """获取资源的绝对路径"""
-    try:
-        base_path = sys._MEIPASS  # PyInstaller 打包后的临时目录
-    except Exception:
-        base_path = os.path.abspath(".")  # 开发环境中的当前目录
-    return os.path.join(base_path, relative_path)
-
-
 class UserConfig(QWidget):
     def __init__(self):
         super().__init__()
@@ -119,7 +109,7 @@ class CleanerTaskWindow(QWidget):
 
         # 加载图片
         self.image_label = QLabel()
-        pixmap = QPixmap(resource_path("./icons/machine/test_machine.png"))  # 机器机型图
+        pixmap = QPixmap("./icons/machine/test_machine.png")  # 机器机型图
         self.image_label.setPixmap(pixmap)
         self.image_label.setFixedSize(300, 300)
         self.image_label.setScaledContents(True)

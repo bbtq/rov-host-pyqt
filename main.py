@@ -11,7 +11,7 @@ from qasync import asyncSlot, QEventLoop
 
 from control import Controller, ActionsUi
 from net import RpcClient, VideoStream
-from user_config import UserConfig
+from user_config import UserConfig, ParametersSetWindow
 
 
 # *******************************************************************************************************
@@ -131,13 +131,13 @@ class MainWindow(QWidget):
     def __init__(self, my_user_config, controller, rpc_client):
         super().__init__()
         self.tasks = []  # 用于追踪所有任务
+        self.parameters_window = ParametersSetWindow()
         self.user_config = my_user_config
         self.controller = controller
         self.rpc_client = rpc_client
         self.actions_layout = ActionsUi()
         self.video_thread = None
         self.init_ui()
-
 
         # 用于窗口拖动和缩放的变量
         self.drag_position = QPoint()
@@ -152,9 +152,9 @@ class MainWindow(QWidget):
         self.timer.timeout.connect(self.poll_events)
         self.timer.start(10)  # 每 10 毫秒检查一次事件
 
-
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
+        self.setWindowIcon(QIcon('./app_icon.ico'))
         self.setGeometry(100, 100, 900, 600)
         # 隐藏默认标题栏
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -194,21 +194,28 @@ class MainWindow(QWidget):
         # ***********************************  顶部交互按钮初始化  **************************************************
         #
         video_en_button = QPushButton()
-        video_en_button.setIcon(QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/devices/computer-symbolic.symbolic.png"))
+        video_en_button.setIcon(QIcon("./icons/Adwaita/32x32/devices/computer-symbolic.symbolic.png"))
         video_en_button.setCheckable(True)
         video_en_button.setFixedSize(30, 30)
         video_en_button.clicked[bool].connect(self.toggle_video_stream)
 
         connect_button = QPushButton()
         connect_button.setIcon(
-            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/actions/mail-send-receive-symbolic.symbolic.png"))
+            QIcon("./icons/Adwaita/32x32/actions/mail-send-receive-symbolic.symbolic.png"))
         connect_button.setCheckable(True)
         connect_button.setFixedSize(30, 30)
         connect_button.clicked[bool].connect(self.toggle_jsonrpc_connect)
 
+        parameters_window_button = QPushButton()
+        parameters_window_button.setIcon(
+            QIcon("./icons/Adwaita/32x32/categories/preferences-other-symbolic.symbolic.png")
+        )
+        parameters_window_button.setFixedSize(30, 30)
+        parameters_window_button.clicked.connect(self.parameters_window_show)
+
         config_sidebar_button = QPushButton()
         config_sidebar_button.setIcon(
-            QIcon("F:/my_gtk_rs/python-gtk/icons/Adwaita/32x32/actions/sidebar-show-right-symbolic.symbolic.png")
+            QIcon("./icons/Adwaita/32x32/actions/sidebar-show-right-symbolic.symbolic.png")
         )
         config_sidebar_button.setCheckable(True)
         config_sidebar_button.setFixedSize(30, 30)
@@ -221,6 +228,7 @@ class MainWindow(QWidget):
 
         config_layout = QHBoxLayout()
         config_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        config_layout.addWidget(parameters_window_button)
         config_layout.addWidget(config_sidebar_button)
 
         user_top_layout = QHBoxLayout()
@@ -367,6 +375,10 @@ class MainWindow(QWidget):
                 self.rpc_client.send_jsonrpc("light", light)
                 self.controller.last_light = light
 
+    # 上位机 - 机器 推进器参数调整界面显示
+    def parameters_window_show(self):
+        self.parameters_window.show()
+
     # 上位机 - 机器 链接？
     def toggle_jsonrpc_connect(self, state):
         if state:
@@ -474,18 +486,18 @@ class MainWindow(QWidget):
     @asyncSlot()
     async def poll_events(self):
         async with self.poll_lock:
-            print("0")
+            # print("0")
             await self.rpc_client.send_get_info(self.machine_label, self.info_tree)
-            print("1")
+            # print("1")
             await self.controller.poll_events()
-            print("2")
+            # print("2")
 
             actions = self.controller.get_actions()
             track, track_hat = self.controller.get_track()
             brush, brush_button = self.controller.get_brush()
             light, light_button = self.controller.get_light()
             self.update_action_buttons(actions, track, track_hat, brush, brush_button, light, light_button)
-            print("3")
+            # print("3")
 
 
 async def main():

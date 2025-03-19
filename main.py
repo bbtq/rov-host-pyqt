@@ -358,21 +358,11 @@ class MainWindow(QWidget):
         event.accept()
 
     # 控制台 动作按钮状态更新 同时发送控制
-    def update_action_buttons(self, actions, track, track_hat, brush, brush_button, light, light_button):
+    def update_action_buttons(self, actions, light, light_button):
         if self.controller.last_actions != actions:
-            self.rpc_client.send_jsonrpc("axis", actions)
+            self.rpc_client.send_jsonrpc("move", actions)
             self.controller.last_actions = actions
             self.actions_layout.update_action_buttons(actions)
-        if self.controller.last_track != track:
-            self.rpc_client.send_jsonrpc("track", track)
-            self.controller.last_track = track
-            self.actions_layout.update_action_buttons(track_hat)
-        if self.controller.last_brush_button != brush_button:
-            self.actions_layout.update_action_buttons(brush_button)
-            self.controller.last_brush_button = brush_button
-            if self.controller.last_brush != brush:
-                self.rpc_client.send_jsonrpc("brush", brush)
-                self.controller.last_brush = brush
         if self.controller.last_light_button != light_button:
             self.actions_layout.update_action_buttons(light_button)
             self.controller.last_light_button = light_button
@@ -493,10 +483,8 @@ class MainWindow(QWidget):
             await self.controller.poll_events()
 
             actions = self.controller.get_actions()
-            track, track_hat = self.controller.get_track()
-            brush, brush_button = self.controller.get_brush()
             light, light_button = self.controller.get_light()
-            self.update_action_buttons(actions, track, track_hat, brush, brush_button, light, light_button)
+            self.update_action_buttons(actions, light, light_button)
 
 
 async def main():

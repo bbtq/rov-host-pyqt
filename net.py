@@ -71,10 +71,14 @@ class RpcClient:
                 method=method,
                 params=param
             )
-        # Send the requests to the server
+        # Print the request JSON
+        print("Sending JSON-RPC request:", requests_list)
+
+        # Send the request to the server
         response = requests.post(self.rpc_server_url, json=requests_list)
+
         # Print the response from the server
-        print(response.json())
+        print("Received JSON-RPC response:", response.json())
 
     async def send_get_info(self, pic_widget: QLabel, info_tree: QTreeView, clean_info_tree: QTreeView):
         # 加载原始图片

@@ -152,6 +152,11 @@ class MainWindow(QWidget):
         self.timer.timeout.connect(self.poll_events)
         self.timer.start(10)  # 每 10 毫秒检查一次事件
 
+        # 单独设置 send_get_info 的定时器
+        self.info_timer = QTimer(self)
+        self.info_timer.timeout.connect(self.poll_info)
+        self.info_timer.start(1000)  # 设置你想要的间隔时间，例如 100 毫秒
+
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
         self.setWindowIcon(QIcon('./icons/app_icon.ico'))
@@ -478,13 +483,16 @@ class MainWindow(QWidget):
     @asyncSlot()
     async def poll_events(self):
         async with self.poll_lock:
-            await self.rpc_client.send_get_info(self.machine_label, self.info_tree,
-                                                self.cleaner_configWindow.tree_view)
             await self.controller.poll_events()
-
             actions = self.controller.get_actions()
             light, light_button = self.controller.get_light()
             self.update_action_buttons(actions, light, light_button)
+
+    @asyncSlot()
+    async def poll_info(self):
+        async with self.poll_lock:
+            await self.rpc_client.send_get_info(self.machine_label, self.info_tree,
+                                                self.cleaner_configWindow.tree_view)
 
 
 async def main():

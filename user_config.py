@@ -1,15 +1,17 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QStandardItemModel, QStandardItem, QFont
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFrame, QSplitter, QLineEdit, QCheckBox, QHBoxLayout,
-                             QLabel, QProgressBar, QTreeView, QCompleter)
-import os
-import sys
+from PyQt6.QtGui import QPixmap, QStandardItemModel, QStandardItem, QFont, QImage
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QProgressBar, QTreeView, QLineEdit, QCompleter)
+import asyncio
+from qasync import asyncSlot
+import multilayer_auv
+import cv2
+import numpy as np
 
 
 class UserConfig(QWidget):
     def __init__(self):
         super().__init__()
-        self.rpc_url = "http://192.168.137.219:8888/"
+        self.rpc_url = "http://192.168.137.219:8888/  "
         self.video_url = "rtsp://rov:rov@192.168.137.132:554/"
         self.rpc_url_edit_line = QLineEdit()
         self.video_url_edit_line = QLineEdit()
@@ -29,7 +31,7 @@ class UserConfig(QWidget):
         rpc_url_edit_line = self.rpc_url_edit_line
         rpc_url_edit_line.setFixedWidth(250)
         rpc_url_edit_line.setText(self.rpc_url)
-        rpc_url_edit_line.setCompleter(QCompleter(["http://192.168.137.219:8888/"]))
+        rpc_url_edit_line.setCompleter(QCompleter(["http://192.168.137.219:8888/  "]))
 
         video_url_edit_line = self.video_url_edit_line
         video_url_edit_line.setFixedWidth(250)
@@ -88,165 +90,250 @@ class UserConfig(QWidget):
         self.lock_rpc_url_edit(state)
         self.lock_video_url_edit(state)
 
-
 class CleanerTaskWindow(QWidget):
     def __init__(self, rpc_client):
         super().__init__()
         self.rpc_client = rpc_client
-        self.mode = {
-            "m": 0  # default
-        }
+        self.mode = {"m": 0}  # default
+        self.task_running = False  # Flag for cleaning task
+        self.current_task = None  # Cleaning task
+        self.video_running = False  # Flag for video capture
+        self.video_task = None  # Video capture task
         self.setWindowTitle("自动清刷监控窗口")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 900, 600)
         self.setMinimumSize(800, 600)
 
-        # 设置主水平布局
-        main_layout = QHBoxLayout()
+        # Main horizontal layout
+        main_layout = QVBoxLayout()
 
-        # 左侧状态栏
+        # Left status panel
         status_widget = QWidget()
-        status_layout = QVBoxLayout()
+        status_layout = QHBoxLayout()
 
-        # 加载图片
+        # Image label
         self.image_label = QLabel()
-        pixmap = QPixmap("./icons/machine/test_machine.png")  # 机器机型图
+        pixmap = QPixmap("./icons/machine/test_machine.png")
         self.image_label.setPixmap(pixmap)
-        self.image_label.setFixedSize(300, 300)
+        self.image_label.setFixedSize(670, 400)
         self.image_label.setScaledContents(True)
-        # self.image_label.setMinimumSize(100, 100)
-
-        # 状态文字
-        self.status_label = QLabel("工作状态")
-        # 设置字体和大小
-        font = QFont("Arial", 20)  # 字体为 Arial，大小为 16
-        font.setBold(True)  # 设置为加粗
-        self.status_label.setFont(font)
-        self.status_label.setStyleSheet("color: black;")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # 测试文字
-        # self.status_label.setText("无任务")
-        # self.status_label.setStyleSheet("color: black;")
-        # self.status_label.setText("工作中")
-        # self.status_label.setStyleSheet("color: green;")
-        # self.status_label.setText("工作异常")
-        # self.status_label.setStyleSheet("color: red;")
 
         status_layout.addStretch(0)
         status_layout.addWidget(self.image_label)
         status_layout.addStretch(0)
-        status_layout.addWidget(self.status_label)
-        status_layout.addStretch(0)
-        status_widget.setLayout(status_layout)
 
-        # 右侧内容部分
+        # Right content panel
         content_widget = QWidget()
         content_layout = QVBoxLayout()
 
-        # 状态文字
-        self.task_label = QLabel("任务进度")
-        # 设置字体和大小
-        font = QFont("Arial", 20)  # 字体为 Arial，大小为 16
-        font.setBold(True)  # 设置为加粗
-        self.task_label.setFont(font)
-
-        # 设置文字颜色为绿色
-        self.task_label.setStyleSheet("color: green;")
-        self.task_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Status label
+        self.status_label = QLabel("工作状态")
+        font = QFont("Arial", 20)
+        font.setBold(True)
+        self.status_label.setFont(font)
+        self.status_label.setStyleSheet("color: black;")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         content_layout.addStretch(0)
-        content_layout.addWidget(self.task_label)
-
-        # 进度条
-        self.progress_bar = QProgressBar()
-        content_layout.addStretch()
-        content_layout.addWidget(self.progress_bar)
-
-        # 测试设置进度值（71%）
-        self.progress_bar.setValue(71)
-
-        # 水平布局，包含左侧垂直布局和右侧垂直布局
-        bottom_layout = QHBoxLayout()
-
-        # 左侧垂直布局
-        left_layout = QVBoxLayout()
+        content_layout.addWidget(self.status_label)
 
 
-        # 复选框
-        self.checkbox1 = QCheckBox("模式1")
-        self.checkbox2 = QCheckBox("模式2")
-        self.checkbox3 = QCheckBox("模式3")
-        # 按钮
+        # Bottom layout (buttons)
+        buttons_layout = QHBoxLayout()
+
+        # Global Monitor button
+        self.monitor_button = QPushButton("全局监控")
+        self.monitor_button.clicked.connect(self.toggle_video)
+
+        # Cleaning button
         self.button = QPushButton("自动清刷")
-        self.button.clicked.connect(self.send_auto_task)
+        self.button.clicked.connect(self.toggle_task)
 
-        left_layout.addWidget(self.button)
-        left_layout.addWidget(self.checkbox1)
-        left_layout.addWidget(self.checkbox2)
-        left_layout.addWidget(self.checkbox3)
+        buttons_layout.addWidget(self.monitor_button)
+        buttons_layout.addWidget(self.button)
 
-        # 添加左侧布局到水平布局
-        bottom_layout.addLayout(left_layout)
+        content_layout.addLayout(buttons_layout)
+        content_layout.addStretch(0)
 
-        # 右侧垂直布局
-        right_layout = QVBoxLayout()
-
-        # 树形控件
+        # Tree view
         self.tree_view = QTreeView()
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['水下机器人', ' '])
         self.tree_view.setModel(self.model)
 
-        # 添加示例数据
-        root = QStandardItem("实时信息")
-
-        # 测试数值
-        root.appendRow([QStandardItem('CPU'), QStandardItem('34%')])
-        root.appendRow([QStandardItem('内存'), QStandardItem('77%')])
-        root.appendRow([QStandardItem('航向角'), QStandardItem('16.92')])
-        root.appendRow([QStandardItem('温度(℃)'), QStandardItem('24.97')])
-        root.appendRow([QStandardItem('深度（cm）'), QStandardItem('100')])
-        root.appendRow([QStandardItem('异常'), QStandardItem('0')])
-
+        # Sample data
+        root = QStandardItem("清刷情况")
+        root.appendRow([QStandardItem('清刷面积'), QStandardItem('6m²')])
+        root.appendRow([QStandardItem('清刷时间'), QStandardItem('h')])
+        root.appendRow([QStandardItem('清刷效率'), QStandardItem('2m²/h')])
         self.model.appendRow(root)
 
-        # 将树形控件添加到右侧布局
-        right_layout.addWidget(self.tree_view)
-
-        # 添加右侧布局到水平布局
-        bottom_layout.addStretch(0)
-        bottom_layout.addLayout(right_layout)
-        content_layout.addStretch(0)
-        content_layout.addLayout(bottom_layout)
+        content_layout.addWidget(self.tree_view)
         content_layout.addStretch(0)
         content_widget.setLayout(content_layout)
 
-        # 把左右两部分加入主水平布局
-        # main_layout.addStretch(0)
-        main_layout.addWidget(status_widget)
-        main_layout.addStretch(0)
-        main_layout.addWidget(content_widget)
-        main_layout.addStretch(1)
+        status_layout.addWidget(content_widget)
+        status_layout.addStretch(0)
 
-        # 设置布局的伸缩因子
+        status_widget.setLayout(status_layout)
+
+        bottom_widget = QWidget()
+        # Bottom layout (buttons)
+        bottom_layout = QHBoxLayout()
+
+        # Task label
+        self.task_label = QLabel("任务进度:")
+        font = QFont("Arial", 15)
+        font.setBold(True)
+        self.task_label.setFont(font)
+        self.task_label.setStyleSheet("color: green;")
+        # self.task_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        bottom_layout.addStretch(0)
+        bottom_layout.addWidget(self.task_label)
+
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        # self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        bottom_layout.addWidget(self.progress_bar)
+        self.progress_bar.setValue(0)
+
+        bottom_widget.setLayout(bottom_layout)
+
+        # Add to main layout
+        main_layout.addWidget(status_widget)
+        main_layout.addWidget(bottom_widget)
+        main_layout.addStretch(0)
+
+        # Set stretch factors
         main_layout.setStretch(0, 1)
         main_layout.setStretch(1, 2)
 
-        # 设置布局的间距和边距
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
         self.setLayout(main_layout)
 
-    def send_auto_task(self):
-        if self.checkbox1.isChecked():
-            self.mode["m"] = 0
-        if self.checkbox2.isChecked():
-            self.mode["m"] = 1
-        if self.checkbox3.isChecked():
-            self.mode["m"] = 2
-        self.rpc_client.send_jsonrpc("mode", self.mode)
+    def update_status_label(self, text: str):
+        self.status_label.setText(text)
 
+    @asyncSlot()
+    async def toggle_task(self):
+        if not self.task_running:
+            # Stop video capture if running
+            if self.video_running:
+                await self.stop_video()
+            # Start cleaning task
+            self.task_running = True
+            self.button.setText("停止清刷")
+            self.current_task = asyncio.create_task(self.run_c_main())
+        else:
+            # Stop cleaning task
+            if self.current_task:
+                self.current_task.cancel()
+                try:
+                    await self.current_task
+                except asyncio.CancelledError:
+                    pass
+                self.current_task = None
+            self.task_running = False
+            self.button.setText("自动清刷")
+            self.status_label.setText("任务已停止")
+            self.status_label.setStyleSheet("color: black;")
+            self.progress_bar.setValue(0)
 
+    @asyncSlot()
+    async def toggle_video(self):
+        if not self.video_running:
+            # Start video capture
+            self.video_running = True
+            self.monitor_button.setText("停止监控")
+            self.video_task = asyncio.create_task(self.run_video_capture())
+        else:
+            # Stop video capture
+            await self.stop_video()
 
+    async def stop_video(self):
+        if self.video_task:
+            self.video_task.cancel()
+            try:
+                await self.video_task
+            except asyncio.CancelledError:
+                pass
+            self.video_task = None
+        self.video_running = False
+        self.monitor_button.setText("全局监控")
+        # Restore default image
+        pixmap = QPixmap("./icons/machine/test_machine.png")
+        self.image_label.setPixmap(pixmap)
 
+    async def run_video_capture(self):
+        try:
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                self.status_label.setText("摄像头打开失败")
+                self.status_label.setStyleSheet("color: red;")
+                return
+
+            while self.video_running:
+                ret, frame = cap.read()
+                if not ret:
+                    self.status_label.setText("视频帧读取失败")
+                    self.status_label.setStyleSheet("color: red;")
+                    break
+
+                # Convert OpenCV BGR to RGB
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Convert to QImage
+                h, w, ch = frame_rgb.shape
+                bytes_per_line = ch * w
+                qimage = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+                # Convert to QPixmap and update label
+                pixmap = QPixmap.fromImage(qimage)
+                self.image_label.setPixmap(pixmap)
+
+                # Control frame rate
+                await asyncio.sleep(1.0 / 30)  # ~30 FPS
+
+            cap.release()
+
+        except asyncio.CancelledError:
+            if 'cap' in locals():
+                cap.release()
+            raise
+        except Exception as e:
+            self.status_label.setText("监控异常")
+            self.status_label.setStyleSheet("color: red;")
+            print(f"Error in video capture: {e}")
+        finally:
+            self.video_running = False
+            self.monitor_button.setText("全局监控")
+            self.video_task = None
+            # Restore default image
+            pixmap = QPixmap("./icons/machine/test_machine.png")
+            self.image_label.setPixmap(pixmap)
+
+    async def run_c_main(self):
+        try:
+            self.status_label.setText("路径规划中")
+            self.status_label.setStyleSheet("color: green;")
+            self.progress_bar.setValue(50)
+
+            await multilayer_auv.async_main(self.status_label)
+
+            self.status_label.setText("任务完成")
+            self.status_label.setStyleSheet("color: black;")
+            self.progress_bar.setValue(100)
+        except asyncio.CancelledError:
+            self.status_label.setText("任务已停止")
+            self.status_label.setStyleSheet("color: black;")
+            self.progress_bar.setValue(0)
+            raise
+        except Exception as e:
+            self.status_label.setText("工作异常")
+            self.status_label.setStyleSheet("color: red;")
+            self.progress_bar.setValue(0)
+            print(f"Error running multilayer_auv.async_main(): {e}")
+        finally:
+            self.task_running = False
+            self.button.setText("自动清刷")
+            self.current_task = None

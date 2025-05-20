@@ -18,7 +18,6 @@ from simple_pid import PID
 # from asyncio.exceptions import CancelledError
 from multilayer_auv import AUVTask, FakeAUVServer, Motion
 import threading
-from main import CleanerTaskWindow  # 假设 CleanerTaskWindow 在 main.py 中定义
 
 first_iden = None
 
@@ -53,7 +52,7 @@ class CVFrameIterator:
             return frame
         else:
             raise StopIteration
-    
+
     def stop(self):
         print("摄像头资源释放中>>>")
         self.cap.release()
@@ -72,7 +71,7 @@ class Motion:
 
     def clear(self):
         self.y = 0.0
-        self.z = -0.8
+        self.z = -1.0
         self.rot = 0.0
 
 #PID控制器
@@ -105,49 +104,53 @@ class Robot_state:
         #当前节点到下一节点的方向（用角度表示，-90,0,90,180）
         #这也就是当前运动的机器人期望方向
         self.area_direction_now = 0
-       
+
         #上一次运动的机器人期望方向
         self.area_direction_last = 0
         #机器人手柄控制器
-       
+
         self.motion=Motion()
         # 平移运动的PID控制器---由于履带问题，移除平移方向上的控制
         # self.PID_controller_motion_translate = PIDController(0.8,0,0.2,0.03,0.5)
         self.PID_controller_motion_rotation_advancing = PIDController(0.8,0,0.2,0.03,0.8)
-        
+
         # 旋转运动的PID控制器
-        self.PID_controller_motion_rotation = PIDController(0.8,0,0.2,0.03,0.8)
-        
+        self.PID_controller_motion_rotation = PIDController(0.9,0,0.2,0.03,0.8)
+
         # 机器人本次导航的运动路径，路径有一系列节点组成
         # self.path,_ = multilayer_obstacle_traversal_planner.return_path()
         self.path = path_real
-        
+
         # 节点id对应着path中的节点
         self.node_id=0
-        
-        # 第一个节点，起点  注意：这里永远是第一个节点 
+
+        # 第一个节点，起点  注意：这里永远是第一个节点
         self.area_center_now = self.path[self.node_id]
-       
+
         # 导航任务是否结束标志
         self.navigation_over_flag=False
-    
-    def calulate_task_progress(self):
+
+    def calulate_task_progress(self, node_id):
         len_path = len(self.path)
-        if len_path and self.node_id > 0:
-            progress = self.node_id / len_path * 100
+        if len_path and node_id > 0:
+            progress = node_id / len_path * 100
         else:
             progress = 0
-        return f'{progress}%'
+        return progress
 
 class LoopTask(AUVTask):
-    def __init__(self, system):
+    def __init__(self, system, treemodel):
         """
         初始化
 
         :param system: 执行此任务的系统
         """
         super().__init__(system)
+        self.infotree_model = treemodel
         self.running = False
+        self.area = 1.206
+        self.Total_elapsed_time = 0
+        self.cleaning_efficiency = 0
 
     async def run(self):
         """
@@ -162,24 +165,50 @@ class LoopTask(AUVTask):
             self.running = True
             start_time = time.time()  # 开始计时
             while self.running:
-                await self.loop()
+                task_progress = await self.loop()
             end_time = time.time()  # 结束计时
-            total_time = end_time - start_time  # 计算一次执行总时间
+            self.Total_elapsed_time = (end_time - start_time) / 60 # 计算一次执行总时间
+            self.cleaning_efficiency = 60 * self.area / self.Total_elapsed_time
+            self.update_model()
             print('任务结束>>>')
-            print('总时间：', total_time)
-            return None
+            print(f"清洁总时长:{format(self.Total_elapsed_time, '.2f')}s")
+            print('计算清洁效率>>>')
+            print(f"清洁效率：{format(self.cleaning_efficiency, '.2f')}m²/min")
+            #返回（清洁面积，清洁时间，清洁效率，任务进度）
+            return (self.area, format(self.Total_elapsed_time, '.2f'), format(self.cleaning_efficiency, '.2f'), task_progress)
         except Exception as e:
             logging.error(f'{self} ERROR: {e}')
             logging.info(traceback.format_exc())
             self.running = False
             return None
 
+    def update_model(self):
+        """
+        更新 QStandardItemModel 中的清刷面积、时间和效率。
+        """
+        if not self.infotree_model:
+            return
+        root = self.infotree_model.item(0)  # 获取根节点 "清刷情况"
+        if root:
+            # 更新清刷面积
+            area_item = root.child(0, 1)  # 清刷面积的值
+            if area_item:
+                area_item.setText(f'{self.area:.2f}m²')
+            # 更新清刷时间
+            time_item = root.child(1, 1)  # 清刷时间的值
+            if time_item:
+                time_item.setText(f'{self.Total_elapsed_time:.2f}分钟')
+            # 更新清刷效率
+            efficiency_item = root.child(2, 1)  # 清刷效率的值
+            if efficiency_item:
+                efficiency_item.setText(f'{self.cleaning_efficiency:.2f}m²/小时')
+
     def stop(self):
         """
         停止正在执行的任务
         """
         self.running = False
-    
+
     def judge_task_done(self):
         return not self.running
 
@@ -371,29 +400,32 @@ def recognition_function(frame, overlay, model):
         yaw_point = [int(yaw_point[0]), int(yaw_point[1])]
         # 绘制方向
         cv.arrowedLine(frame, center, yaw_point, (0, 255, 0), thickness=5, tipLength=0.2)
-    
+
     #识别视频中的污垢并标记出
-    results = model(frame, device="cuda:0", conf=0.5, iou=0.5)
-    for result in results:
-        for box in result.boxes:
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-            center_x = int((x1 + x2) / 2)
-            center_y = int((y1 + y2) / 2)
+    '''
+    目前不需要识别，暂且注释
+    '''
+    # results = model(frame, device="cuda:0", conf=0.5, iou=0.5)
+    # for result in results:
+    #     for box in result.boxes:
+    #         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+    #         center_x = int((x1 + x2) / 2)
+    #         center_y = int((y1 + y2) / 2)
 
-            # 获取类别名与置信度
-            cls_id = int(box.cls[0])
-            label = model.names[cls_id]
-            conf = float(box.conf[0])
-            text = f"{label} {conf:.2f}"
+    #         # 获取类别名与置信度
+    #         cls_id = int(box.cls[0])
+    #         label = model.names[cls_id]
+    #         conf = float(box.conf[0])
+    #         text = f"{label} {conf:.2f}"
 
-            # 画框与中心点
-            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+    #         # 画框与中心点
+    #         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    #         cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
 
-            # 显示标签文字
-            cv2.putText(frame, text, (int(x1), int(y1) - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            
+    #         # 显示标签文字
+    #         cv2.putText(frame, text, (int(x1), int(y1) - 10),
+    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
     # 将frame和mask图像叠加，并显示叠加结果
     frame = cv.addWeighted(frame, 0.8, overlay, 0.2, 0)
     # 创建一个可调整大小的窗口
@@ -416,8 +448,8 @@ def recognition_function(frame, overlay, model):
 def Movement_planning(robot_state):
     # 更新节点id，刚开始为起点，更新为路径的下一个节点
     robot_state.node_id += 1
-    
-   
+
+
     if robot_state.node_id == len(robot_state.path):
         # 判断是否访问完最后一个节点、终点，是的话navigatiossssssn_over_flag标志为Ture
         robot_state.navigation_over_flag=True   #为True时，表示任务结束
@@ -441,7 +473,7 @@ def Movement_planning(robot_state):
         if robot_state.area_center_next[0]>robot_state.area_center_now[0]:     #期望节点在当前节点右侧
             robot_state.area_direction_now=0
         else:                                                                  #期望节点在当前节点左侧
-            robot_state.area_direction_now = 180                            
+            robot_state.area_direction_now = 180
     elif robot_state.area_center_next[0]>robot_state.area_center_now[0]:       #期望节点在当前节点右上方
         if robot_state.area_center_next[1]<robot_state.area_center_now[1]:
             robot_state.area_direction_now=45
@@ -464,7 +496,7 @@ def robot_advance(robot_state):
     # 根据在机器人在期望节点前后设置前进还是后退
     # velocit_y= math.sqrt((robot_state.area_center_next[0]-robot_state.path[robot_state.node_id-1][0])**2 +
     #                      (robot_state.area_center_next[1]-robot_state.path[robot_state.node_id-1][1])**2) * 0.001
-    
+
     #机器人前进的速度
     velocit_y = 0.8
 
@@ -476,7 +508,7 @@ def robot_advance(robot_state):
         else:                                                   #如果机器人当前纵坐标大于期望节点纵坐标，则后退
             robot_state.motion.y = -velocit_y
     elif robot_state.area_direction_now == 90:                  #如果方向为90°，即向上
-        robot_expected_y = robot_state.area_center_next[1]      #期望节点纵坐标  
+        robot_expected_y = robot_state.area_center_next[1]      #期望节点纵坐标
         robot_now_y = robot_state.robot_center[1]               #机器人当前纵坐标
         if robot_now_y >= robot_expected_y:                     #如果机器人当前纵坐标大于期望节点纵坐标，则前进
             robot_state.motion.y = velocit_y
@@ -588,7 +620,7 @@ def robot_advance(robot_state):
         robot_expected_y = robot_state.area_center_next[1]
         robot_now_y = robot_state.robot_center[1]
         robot_state.motion.rot = -robot_state.PID_controller_motion_rotation_advancing.calculate(robot_expected_y, robot_now_y)
-        
+
     elif robot_state.area_direction_now in [-45, 45, 135, -135]:
         A = robot_state.area_center_now
         B = robot_state.area_center_next
@@ -618,7 +650,7 @@ def robot_advance(robot_state):
     #         # robot_state.motion.rot = robot_state.PID_controller_motion_rotation.calculate(robot_state.area_direction_now,robot_state.robot_yaw)
     #     else:
     #         robot_state.motion.rot = -robot_state.PID_controller_motion_rotation.calculate(robot_state.area_direction_now,robot_state.robot_yaw)
-        
+
         # if robot_state.area_direction_now == 45:
         #     target_yaw = 45
         # elif robot_state.area_direction_now == -45:
@@ -655,7 +687,7 @@ def robot_advance(robot_state):
 输出：机器人状态
 """
 def robot_revolve(robot_state):
-    # 旋转时，关闭直线、旋转、平移功能 --->移除平移、垂推 
+    # 旋转时，关闭直线、旋转、平移功能 --->移除平移、垂推
     # robot_state.motion.x = 0
     robot_state.motion.y = 0
     # robot_state.motion.z = 0
@@ -727,7 +759,7 @@ area_direction_judgement = False
 """
 def robot_initialize(robot_state, threshold=200) :
     distance_to_start = distance_AB(robot_state.robot_center, robot_state.path[0])
-    
+
     # 记录起点
     start_point = robot_state.path[0]
 
@@ -745,7 +777,7 @@ def robot_initialize(robot_state, threshold=200) :
 
     # 仅进行旋转 + 前后移动，确保能朝起点方向前进
     robot_state = robot_revolve(robot_state)
-    
+
     # 如果朝向已大致对准，开始前进靠近起点
     if abs(abs(robot_state.robot_yaw) - abs(robot_state.area_direction_now)) <= 30:
         robot_state = robot_advance(robot_state)
@@ -784,7 +816,7 @@ def navigation_function(robot_state,results):
     #     print(f"motion.z=={robot_state.motion.z}")
     # 当机器人到达期望节点时，将area_direction_judgement设置为Ture,表示需要重新判断期望方向
     # if distance_AB(robot_state.robot_center, robot_state.area_center_next) <= 40 :  #到达期望节点附近，需要重新判断期望方向 40修改到20
-    if distance_AB(robot_state.robot_center, robot_state.area_center_next) <= 20 :
+    if distance_AB(robot_state.robot_center, robot_state.area_center_next) <= 40 :
         print("到达节点附近，需要更新期望方向>>>")
         area_direction_judgement = True
     # 判断是否需要重新设置期望方向
@@ -792,37 +824,38 @@ def navigation_function(robot_state,results):
     if area_direction_judgement == True:
         #更新区域当前节点
         robot_state.area_center_now = robot_state.area_center_next
-        
+
         #更新上一次区域期望的方向
         robot_state.area_direction_last = robot_state.area_direction_now
-        
+
         #更新区域期望节点、、导航是否结束
-        robot_state.area_center_next,robot_state.area_direction_now,robot_state.navigation_over_flag= Movement_planning(robot_state)    
+        robot_state.area_center_next,robot_state.area_direction_now,robot_state.navigation_over_flag= Movement_planning(robot_state)
         area_direction_judgement = False
         # print("方向",robot_state.area_direction_now)
 
     # print("期望方向：", robot_state.area_direction_now)
     # print("上一次期望方向：", robot_state.area_direction_last)
     #运动控制，更新手柄控制值
-    
+
     #如果本次期望方向和上一次期望方向一样，说明机器人不需要旋转，直接前进就行
     if robot_state.area_direction_now == robot_state.area_direction_last:
         robot_state = robot_advance(robot_state)
         # print("前进：", robot_state.motion.y)
-        
+
     #如果本次期望方向和上一次期望方向不一样，说明机器人需要旋转，调用旋转函数
     else:
         robot_state = robot_revolve(robot_state)
 
         #如果当前期望方向和上一次期望方向的差值小于30度，说明机器人已经旋转到位，更新上一次期望方向
-        if abs(abs(robot_state.robot_yaw)-abs(robot_state.area_direction_now)) <= 30:
+        # if abs(abs(robot_state.robot_yaw)-abs(robot_state.area_direction_now)) <= 30:
+        if abs(abs(robot_state.robot_yaw)-abs(robot_state.area_direction_now)) <= 30:       #原先为30，调整为10，让机器人在进行节点旋转时，旋转角度足够正确
             robot_state.area_direction_last = robot_state.area_direction_now
 
     return robot_state.motion,robot_state.navigation_over_flag
 
 
 class Pool_Navigation_Task(LoopTask):
-    def __init__(self, system, frames, label, server=None):
+    def __init__(self, system, frames, label, progress, treemodel, server=None):
         """
         初始化
 
@@ -830,8 +863,10 @@ class Pool_Navigation_Task(LoopTask):
         :param frames: 由CVFrameIterator实例提供的帧图像迭代器
         :param server: 机器人服务器实例，默认为系统中的服务器
         """
-        super().__init__(system)
+        super().__init__(system, treemodel)
         self.label = label
+        self.progress = progress
+
         self.frames = frames
         self.frame = None
         self.server = server if server else system.server
@@ -841,9 +876,9 @@ class Pool_Navigation_Task(LoopTask):
         self.navigation_function = navigation_function
         self.detect_first_frame_flag = True
         self.robot_state = None
+        self.task_progress = 0
         self.overlay = None
         self.model = YOLO('best4.21.pt')
-
     async def loop(self):
         """
         实现自主水下机器人的目标物体识别和导航移动的任务。
@@ -870,24 +905,27 @@ class Pool_Navigation_Task(LoopTask):
             self.robot_state = Robot_state(path_real)
             #将第一帧处理标志关闭
             self.detect_first_frame_flag = False
-        self.robot_state.motion.z = -0.8 # 启动垂直推进器
+        self.robot_state.motion.z = -1.0 # 启动垂直推进器
         # 识别Apriltag码，确认机器人的中心点与方向 [center,yaw]
         results = self.recognition_function(self.frame, self.overlay, self.model)
-        """
-        注释掉这部分代码，发现在进行吸污的时候水花会扰乱识别，导致识别不到机器人位置从而将手柄值清0
-        """
         if results==[]:
-            self.motion.clear()
+            self.motion.clear()     #修改了 clear中 motion.z的值，保持一直吸污
             pass
         else:
         # 从 robot_state 中获取最新导航后的控制值，赋值给 self.motion
             self.motion,navigation_over_flag = self.navigation_function(self.robot_state,results)
+            self.task_progress = self.robot_state.calulate_task_progress(self.robot_state.node_id)
+            # print(f"路径长度：{len(self.robot_state.path)}")
+            print(f"当前node_id:{self.robot_state.node_id}")
+            print("<<<>>>")
+            print(self.task_progress)
+            self.progress.setValue(int(self.task_progress))
             if navigation_over_flag == True:
                 self.motion.clear()
                 await self.server.move(**self.motion.__dict__)
                 await asyncio.sleep(0.1)
                 self.running = False
-            
+
         await self.server.move(**self.motion.__dict__)
         await asyncio.sleep(0.001)
 
@@ -902,3 +940,4 @@ class Pool_Navigation_Task(LoopTask):
             # stop_flag = self.is_task_done() #返回任务是否结束 True
             # print('stop_flag:',stop_flag)
             # print("任务结束")
+        return self.task_progress

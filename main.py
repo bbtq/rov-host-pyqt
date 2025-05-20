@@ -153,9 +153,9 @@ class MainWindow(QWidget):
         self.timer.start(10)  # 每 10 毫秒检查一次事件
 
         # 单独设置 send_get_info 的定时器
-        self.info_timer = QTimer(self)
-        self.info_timer.timeout.connect(self.poll_info)
-        self.info_timer.start(1000)  # 设置你想要的间隔时间，例如 100 毫秒
+        # self.info_timer = QTimer(self)
+        # self.info_timer.timeout.connect(self.poll_info)
+        # self.info_timer.start(1000)  # 设置你想要的间隔时间，例如 100 毫秒
 
     def init_ui(self):
         self.setWindowTitle("ROV-Host")
@@ -306,6 +306,7 @@ class MainWindow(QWidget):
         pass
 
     def open_cleaner_task_window(self):
+        self.cleaner_configWindow.main_window = self  # 传递主窗口引用
         self.cleaner_configWindow.show()
 
     # 侧边配置窗口隐藏函数

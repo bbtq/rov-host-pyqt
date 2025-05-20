@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 import heapq
 import numpy as np
@@ -9,6 +10,8 @@ from ultralytics import YOLO
 from PIL import Image
 from torchvision import transforms
 from torchvision.models import resnet18, ResNet18_Weights
+
+
 # from multilayer_detect_return_results import detect_first_frame_centers_CVFrameIterator
 # 定义节点类，用于A*算法中的节点
 class Node:
@@ -32,6 +35,7 @@ class Node:
     def __hash__(self):
         return hash(self.position)
 
+
 def distance_to_obstacle(grid, position):
     """计算节点与障碍物的最小距离"""
     min_distance = float('inf')
@@ -41,6 +45,7 @@ def distance_to_obstacle(grid, position):
                 distance = abs(position[0] - i) + abs(position[1] - j)  # 曼哈顿距离
                 min_distance = min(min_distance, distance)
     return min_distance
+
 
 # # A*算法的实现
 # def astar_search(grid, start, end, mode=0):
@@ -93,7 +98,7 @@ def distance_to_obstacle(grid, position):
 
 #     return None  # 如果没有找到路径，返回None
 
-#加入转弯惩罚项
+# 加入转弯惩罚项
 def astar_search(grid, start, end):
     start_node = Node(None, start)
     end_node = Node(None, end)
@@ -120,7 +125,8 @@ def astar_search(grid, start, end):
             node_position = (current_node.position[0] + new_position[0],
                              current_node.position[1] + new_position[1])
 
-            if node_position[0] < 0 or node_position[0] >= len(grid) or node_position[1] < 0 or node_position[1] >= len(grid[0]):
+            if node_position[0] < 0 or node_position[0] >= len(grid) or node_position[1] < 0 or node_position[1] >= len(
+                    grid[0]):
                 continue
             if grid[node_position[0]][node_position[1]] != 0:
                 continue
@@ -143,7 +149,8 @@ def astar_search(grid, start, end):
             base_cost = 1.4 if abs(direction[0]) + abs(direction[1]) == 2 else 1
             neighbor.g = current_node.g + base_cost + turn_penalty
 
-            neighbor.h = abs(neighbor.position[0] - end_node.position[0]) + abs(neighbor.position[1] - end_node.position[1])
+            neighbor.h = abs(neighbor.position[0] - end_node.position[0]) + abs(
+                neighbor.position[1] - end_node.position[1])
             neighbor.f = neighbor.g + neighbor.h
 
             if any(neighbor == open_node and neighbor.g > open_node.g for open_node in open_list):
@@ -159,11 +166,12 @@ def compute_distance_matrix(points, grid, cell_size):
     n = len(coords)
     dist = np.zeros((n, n))
     for i in range(n):
-        for j in range(i+1, n):
+        for j in range(i + 1, n):
             path = astar_search(grid, coords[i], coords[j])
             d = len(path) if path else 1e9
             dist[i][j] = dist[j][i] = d
     return dist
+
 
 def nearest_neighbor_path(dist_matrix):
     """最近邻初始路径"""
@@ -177,6 +185,7 @@ def nearest_neighbor_path(dist_matrix):
         path.append(next_node)
         visited[next_node] = True
     return path
+
 
 def two_opt(path, dist_matrix):
     """2-opt 路径局部优化"""
@@ -193,6 +202,7 @@ def two_opt(path, dist_matrix):
                     path[i:j] = reversed(path[i:j])
                     improved = True
     return path
+
 
 def nearest_neighbor_with_angle(start_idx, dist_matrix, coords):
     n = len(dist_matrix)
@@ -213,7 +223,7 @@ def nearest_neighbor_with_angle(start_idx, dist_matrix, coords):
             direction = np.array(coords[j]) - np.array(coords[current])
             if last_direction is not None:
                 cosine = np.dot(direction, last_direction) / (
-                    np.linalg.norm(direction) * np.linalg.norm(last_direction) + 1e-6)
+                        np.linalg.norm(direction) * np.linalg.norm(last_direction) + 1e-6)
                 angle_penalty = (1 - cosine) * 10  # 可调节，cos越小惩罚越大
             else:
                 angle_penalty = 0
@@ -231,7 +241,8 @@ def nearest_neighbor_with_angle(start_idx, dist_matrix, coords):
 
     return path
 
-#加载相机内参矩阵和畸变系数
+
+# 加载相机内参矩阵和畸变系数
 def load_matrix_K_dist(file_name):
     """
     加载txt文件，txt文件内容为相机内参矩阵和畸变系数
@@ -256,15 +267,16 @@ def load_matrix_K_dist(file_name):
     # print(dist_coeffs)
     return (camera_matrix, dist_coeffs)
 
-#对视频帧进行预处理（去畸变、透视变换、高亮区域检测、修复）
+
+# 对视频帧进行预处理（去畸变、透视变换、高亮区域检测、修复）
 def videos_preprocessing_detect(frame):
     """
     对视频帧进行预处理（去畸变、透视变换、高亮区域检测、修复）
     输入：视频帧
     输出：预处理后的视频帧
     """
- 
-    K ,distortion_coeffs = load_matrix_K_dist('calibrate_front_1080P.txt')
+
+    K, distortion_coeffs = load_matrix_K_dist('calibrate_front_1080P.txt')
 
     # 透视变换参数
     # 确保 src_pts 和 dst_pts 形状正确
@@ -289,7 +301,7 @@ def videos_preprocessing_detect(frame):
     # 2️⃣ **透视变换**
     warped_frame = cv2.warpPerspective(undistorted_frame, M_perspective, (1920, 1080))
 
-    repaired_frame  =  warped_frame
+    repaired_frame = warped_frame
     # 3️⃣ **高亮区域检测**
     # gray = cv2.cvtColor(warped_frame, cv2.COLOR_BGR2GRAY)
     # _, bright_spots = cv2.threshold(gray, brightness_threshold, 255, cv2.THRESH_BINARY)
@@ -301,16 +313,17 @@ def videos_preprocessing_detect(frame):
     # 5️⃣ **修复高亮区域**
     # repaired_frame = cv2.inpaint(warped_frame, smooth_mask, 5, cv2.INPAINT_TELEA)
 
-    return repaired_frame  
+    return repaired_frame
 
-#对视频帧进行预处理（去畸变、透视变换、高亮区域检测、修复）
+
+# 对视频帧进行预处理（去畸变、透视变换、高亮区域检测、修复）
 def videos_preprocessing_evaluate(frame):
     """
     对视频帧进行预处理（去畸变、透视变换、高亮区域检测、修复）
     输入：视频帧
     输出：预处理后的视频帧
     """
-    K ,distortion_coeffs = load_matrix_K_dist('calibrate_front_1080P.txt')
+    K, distortion_coeffs = load_matrix_K_dist('calibrate_front_1080P.txt')
 
     # 透视变换参数
     # 确保 src_pts 和 dst_pts 形状正确
@@ -343,9 +356,10 @@ def videos_preprocessing_evaluate(frame):
     # 5️⃣ **修复高亮区域**
     repaired_frame = cv2.inpaint(warped_frame, smooth_mask, 5, cv2.INPAINT_TELEA)
 
-    return repaired_frame  
+    return repaired_frame
 
-#检测第一帧机器人和污垢的位置：
+
+# 检测第一帧机器人和污垢的位置：
 def detect_first_frame_centers(frame, model):
     """
     处理视频的第一帧，并返回目标的中心点坐标列表。
@@ -357,17 +371,17 @@ def detect_first_frame_centers(frame, model):
     返回：
     - center_points: list of tuples, [(x1, y1), (x2, y2), ...] 目标框的中心点坐标
     """
-    #创建一个ApriTag检测器
+    # 创建一个ApriTag检测器
     at_detector = Detector(
-    families="tag25h9",
-    nthreads=64,
-    quad_decimate=1.0,
-    quad_sigma=0,
-    refine_edges=1,
-    decode_sharpening=0.25,
-    debug=0
+        families="tag25h9",
+        nthreads=64,
+        quad_decimate=1.0,
+        quad_sigma=0,
+        refine_edges=1,
+        decode_sharpening=0.25,
+        debug=0
     )
-    #相机内参矩阵 为AprilTag检测提供
+    # 相机内参矩阵 为AprilTag检测提供
     cameraMatrix = (811.184725, 1011.40783, 811.734172, 488.910479)
 
     # 加载模型
@@ -375,9 +389,10 @@ def detect_first_frame_centers(frame, model):
 
     repaired_frame = videos_preprocessing_detect(frame)
 
-    #检测机器人的初始位置
+    # 检测机器人的初始位置
     repaired_frame_gray = cv2.cvtColor(repaired_frame, cv2.COLOR_BGR2GRAY)
-    tagDetection = at_detector.detect(img=repaired_frame_gray, estimate_tag_pose=True, camera_params=cameraMatrix, tag_size=0.060325)
+    tagDetection = at_detector.detect(img=repaired_frame_gray, estimate_tag_pose=True, camera_params=cameraMatrix,
+                                      tag_size=0.060325)
     # 获得图像中机器人的位置,为路径规划提供起点
     if tagDetection == []:
         print("no found Robot")
@@ -386,27 +401,29 @@ def detect_first_frame_centers(frame, model):
         # 获取apriltag码的中心位置
         Robot_center = [(int(tagDetection[0].center[0]), int(tagDetection[0].center[1]))]
     #  **目标检测**
-    results = model(repaired_frame, device="cuda:0", conf=0.5, iou=0.7, verbose=False)
+    # results = model(repaired_frame, device="cuda:0", conf=0.5, iou=0.7, verbose=False)
 
     #  **解析检测结果，获取中心点坐标**
     dirt_center_points = []
-    for result in results:
-        for box in result.boxes:
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()  # 获取检测框坐标
-            center_x = int((x1 + x2) / 2)  # 计算中心点 x 坐标
-            center_y = int((y1 + y2) / 2)  # 计算中心点 y 坐标
-            dirt_center_points.append((center_x, center_y))
-            #可视化
-            # 绘制边界框（绿色）
-            cv2.rectangle(repaired_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            # 绘制中心点（红色）
-            cv2.circle(repaired_frame, (center_x, center_y), 5, (0, 0, 255), -1)
+    # for result in results:
+    #     for box in result.boxes:
+    #         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()  # 获取检测框坐标
+    #         center_x = int((x1 + x2) / 2)  # 计算中心点 x 坐标
+    #         center_y = int((y1 + y2) / 2)  # 计算中心点 y 坐标
+    #         dirt_center_points.append((center_x, center_y))
+    #         #可视化
+    #         # 绘制边界框（绿色）
+    #         cv2.rectangle(repaired_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    #         # 绘制中心点（红色）
+    #         cv2.circle(repaired_frame, (center_x, center_y), 5, (0, 0, 255), -1)
+
     # cv2.namedWindow('第一帧-检测机器人中心与污垢中心', cv2.WINDOW_NORMAL)
-    # cv2.resizeWindow('第一帧-检测机器人中心与污垢中心', 800, 600) 
+    # cv2.resizeWindow('第一帧-检测机器人中心与污垢中心', 800, 600)
     # cv2.imshow('第一帧-检测机器人中心与污垢中心', repaired_frame)
-    # cv2.waitKey(1)    
+    # cv2.waitKey(1)
 
     return Robot_center, dirt_center_points  # 返回中心点列表
+
 
 def evaluate_pool_frame(frame, model_path):
     """
@@ -416,7 +433,7 @@ def evaluate_pool_frame(frame, model_path):
         model_path: 模型路径
     输出：分类结果（字符串形式的等级，1-5）
     """
-    
+
     label_map = {0: "Level 1", 1: "Level 2", 2: "Level 3", 3: "Level 4", 4: "Level 5"}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # cap = None
@@ -434,8 +451,8 @@ def evaluate_pool_frame(frame, model_path):
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                            std=[0.229, 0.224, 0.225])
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
     ])
 
     # try:
@@ -443,7 +460,7 @@ def evaluate_pool_frame(frame, model_path):
 
     # except StopIteration as e:
     #     print("无法读取帧")
-        
+
     repaired_frame = videos_preprocessing_evaluate(frame)
     image = Image.fromarray(cv2.cvtColor(repaired_frame, cv2.COLOR_BGR2RGB))
     image = transform(image).unsqueeze(0).to(device)
@@ -453,26 +470,27 @@ def evaluate_pool_frame(frame, model_path):
         outputs = model(image)
         _, predicted = torch.max(outputs, 1)
         predicted_class = predicted.item()
-        
+
     # 处理预测结果
     predicted_label = label_map.get(predicted_class, "Unknown")
     # if predicted_label == "Unknown":
     #     return 5
-        
+
     # try:
     result = predicted_label.split()[1]
     # except IndexError:
     #     return 5
 
     # 显示结果
-    cv2.putText(repaired_frame, f"Predicted: {predicted_label}", 
+    cv2.putText(repaired_frame, f"Predicted: {predicted_label}",
                 (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.imshow("evaluate_level:", repaired_frame)
     cv2.waitKey(0)
-    
+
     return result
 
-#地图网格构建
+
+# 地图网格构建
 def create_map(start, ends, grid, grid_small, cell_size, small_cell_size, path_real):
     # 创建叠加图层
     overlay = np.zeros((1080, 1920, 3), np.uint8)
@@ -487,7 +505,7 @@ def create_map(start, ends, grid, grid_small, cell_size, small_cell_size, path_r
             # 绘制障碍物和空白区域
             color = (0, 0, 255) if grid[x][y] == 1 else (255, 255, 255)
             cv2.rectangle(overlay, (y * cell_size, x * cell_size), ((y + 1) * cell_size, (x + 1) * cell_size),
-                          color,-1)  # 绘制障碍物区域和可行区域
+                          color, -1)  # 绘制障碍物区域和可行区域
             cv2.rectangle(overlay, (y * cell_size, x * cell_size), ((y + 1) * cell_size, (x + 1) * cell_size),
                           (255, 0, 0), 8)  # 绘制大网格线  蓝色
     # 绘制小网格
@@ -505,11 +523,12 @@ def create_map(start, ends, grid, grid_small, cell_size, small_cell_size, path_r
     for point_small in ends_small:
         cv2.circle(overlay, (point_small[1] * small_cell_size + small_cell_size // 2,
                              point_small[0] * small_cell_size + small_cell_size // 2), 10, (0, 255, 0), 3)
-    #绘制路径
-    for id in range(len(path_real)-1):
+    # 绘制路径
+    for id in range(len(path_real) - 1):
         cv2.circle(overlay, path_real[id], 7, (255, 255, 255), -1)
-        cv2.arrowedLine(overlay, path_real[id], path_real[id+1], (255, 0, 0), thickness=10)
+        cv2.arrowedLine(overlay, path_real[id], path_real[id + 1], (255, 0, 0), thickness=10)
     return overlay
+
 
 def get_path(start, ends_pixel, cell_size, small_cell_size, grid, grid_small):
     big_path = []
@@ -555,21 +574,27 @@ def get_path(start, ends_pixel, cell_size, small_cell_size, grid, grid_small):
                 if flag_first:
                     big_path.extend(current_path[:-1])
                     final_path.extend(current_path[:-1])
-                    final_path_real.extend((p[0]*cell_size+cell_size//2, p[1]*cell_size+cell_size//2) for p in current_path[:-1])
+                    final_path_real.extend(
+                        (p[0] * cell_size + cell_size // 2, p[1] * cell_size + cell_size // 2) for p in
+                        current_path[:-1])
                 else:
                     big_path.extend(current_path[1:-1])
                     final_path.extend(current_path[1:-1])
-                    final_path_real.extend((p[0]*cell_size+cell_size//2, p[1]*cell_size+cell_size//2) for p in current_path[1:-1])
+                    final_path_real.extend(
+                        (p[0] * cell_size + cell_size // 2, p[1] * cell_size + cell_size // 2) for p in
+                        current_path[1:-1])
 
                 Turning_point = current_path[-2]
-                Turning_point = (Turning_point[1]*cell_size + cell_size//2, Turning_point[0]*cell_size + cell_size//2)
+                Turning_point = (
+                Turning_point[1] * cell_size + cell_size // 2, Turning_point[0] * cell_size + cell_size // 2)
                 Turning_point = (Turning_point[1] // small_cell_size, Turning_point[0] // small_cell_size)
                 path_small = []
                 current_small_position = Turning_point
             else:
                 if flag_first:
                     Turning_point = current_path[-2]
-                    Turning_point = (Turning_point[1]*cell_size + cell_size//2, Turning_point[0]*cell_size + cell_size//2)
+                    Turning_point = (
+                    Turning_point[1] * cell_size + cell_size // 2, Turning_point[0] * cell_size + cell_size // 2)
                     Turning_point = (Turning_point[1] // small_cell_size, Turning_point[0] // small_cell_size)
                     path_small = [Turning_point]
                     current_small_position = Turning_point
@@ -593,17 +618,20 @@ def get_path(start, ends_pixel, cell_size, small_cell_size, grid, grid_small):
         if flag_first:
             small_path.extend(path_small)
             final_path.extend(path_small)
-            final_path_real.extend((p[0]*small_cell_size + small_cell_size//2, p[1]*small_cell_size + small_cell_size//2) for p in current_small_path)
+            final_path_real.extend(
+                (p[0] * small_cell_size + small_cell_size // 2, p[1] * small_cell_size + small_cell_size // 2) for p in
+                current_small_path)
         else:
             small_path.extend(current_small_path[1:])
             final_path.extend(current_small_path[1:])
-            final_path_real.extend((p[0]*small_cell_size + small_cell_size//2, p[1]*small_cell_size + small_cell_size//2) for p in current_small_path[1:])
+            final_path_real.extend(
+                (p[0] * small_cell_size + small_cell_size // 2, p[1] * small_cell_size + small_cell_size // 2) for p in
+                current_small_path[1:])
 
         flag_first = False
 
     final_path_real = [(y, x) for x, y in final_path_real]
     return final_path, final_path_real
-
 
 
 def return_path(rob_center, dirt_centers):
@@ -613,27 +641,27 @@ def return_path(rob_center, dirt_centers):
     # start, ends = detect_first_frame_centers(video_path, model_path)
     start, ends = rob_center, dirt_centers
     if start == []:
-        start = [(150, 150)]
-        
+        start = [(150, 220)]
+
     if ends == []:
         """实测的点位
         # ends = [(450,150), (750,150), (1050,150), (1350,150), (450,450), (750,450), (1050,450), (1350, 450)]
         # ends = [(450,150), (750,150), (1050, 150), (450,450), (750,450),(150, 450), (1050,450)]
         """
-        #大网格300 小网格100
-        ends = [(450,150), (750,150), (1050,150), (1350,150), (450,450), (750,450), (1050,450), (1350, 450)]
-        
-        #大网格240 小网格80
-        # ends = [(350,150), (590,150), (830,150), (1070,150), (1310,150), 
-        #         (150,350), (350,350), (590,350), (830,350), (1070, 350), (1310,350)]
-        
+        # 大网格300 小网格100
+        # ends = [(450,150), (750,150), (1050,150), (1350,150), (450,450), (750,450), (1050,450), (1350, 450)]
+
+        # 大网格240 小网格80
+        ends = [(350, 150), (590, 150), (830, 150), (1070, 150), (1310, 150), (1310, 390), (1310, 630), (1310, 850)]
+        # (350,350), (590,350), (830,350), (1070, 350), (1310,350)]
+
         # ends = [(765, 225), (1306, 286), (413, 220), (1019, 776), (1534, 778), (1255, 747),  (696, 345), (1677, 506), (1079, 315),(479, 786),(710, 676)]
     obstacles = []
     height, width = 1080, 1920  # h*w = 1080*1920
-    cell_size = 300  # 大网格尺寸
-    small_cell_size = 100  # 小网格尺寸
-    # cell_size = 240  # 大网格尺寸
-    # small_cell_size = 80 # 小网格尺寸
+    # cell_size = 300  # 大网格尺寸
+    # small_cell_size = 100  # 小网格尺寸
+    cell_size = 240  # 大网格尺寸
+    small_cell_size = 80  # 小网格尺寸
     grid = np.zeros((int(np.ceil(height / cell_size)), int(np.ceil(width / cell_size))), dtype=int)
     grid_small = np.zeros((int(np.ceil(height / small_cell_size)), int(np.ceil(width / small_cell_size))), dtype=int)
     for obstacle in obstacles:
@@ -652,7 +680,8 @@ def return_path(rob_center, dirt_centers):
     # for end in ends:
     #     if grid[end[1]//cell_size,end[0]//cell_size] == 1 or grid_small[end[1]//small_cell_size,end[0]//small_cell_size] == 1:
     #         ends.remove(end)
-    ends = [end for end in ends if not (grid[end[1]//cell_size, end[0]//cell_size] == 1 or grid_small[end[1]//small_cell_size, end[0]//small_cell_size] == 1)]
+    ends = [end for end in ends if not (grid[end[1] // cell_size, end[0] // cell_size] == 1 or grid_small[
+        end[1] // small_cell_size, end[0] // small_cell_size] == 1)]
 
     # print(f"ends: {ends}")
 
@@ -660,20 +689,22 @@ def return_path(rob_center, dirt_centers):
     # print(grid)
     # print(grid_small)
     overlay = create_map(start, ends, grid, grid_small, cell_size, small_cell_size, final_path_real)
-    return final_path_real,overlay
+    return final_path_real, overlay
+
 
 def overlay():
-    a, overlay = return_path([],[])
+    a, overlay = return_path([], [])
     return overlay
-#主程序入口
+
+
+# 主程序入口
 if __name__ == '__main__':
-    
-    a, overlay = return_path([],[])
+    a, overlay = return_path([], [])
     # print(overlay.shape)
     frame = cv2.imread('capture.jpg')
     frame = videos_preprocessing_detect(frame)
     overlay = cv2.addWeighted(frame, 0.8, overlay, 0.2, 0)
-    # cv2.imwrite("overlay.jpg", overlay)
+    cv2.imwrite("overlay.jpg", overlay)
     cv2.imshow("overlay", overlay)
     cv2.waitKey(0)
     # cv2.destroyAllWindows()

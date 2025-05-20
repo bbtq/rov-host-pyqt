@@ -156,16 +156,16 @@ class CleanerTaskWindow(QWidget):
 
         # Tree view
         self.tree_view = QTreeView()
-        self.model = QStandardItemModel()
-        self.model.setHorizontalHeaderLabels(['水下机器人', ' '])
-        self.tree_view.setModel(self.model)
+        self.infotree_model = QStandardItemModel()
+        self.infotree_model.setHorizontalHeaderLabels(['水下机器人', ' '])
+        self.tree_view.setModel(self.infotree_model)
 
         # Sample data
         root = QStandardItem("清刷情况")
         root.appendRow([QStandardItem('清刷面积'), QStandardItem('6m²')])
         root.appendRow([QStandardItem('清刷时间'), QStandardItem('h')])
         root.appendRow([QStandardItem('清刷效率'), QStandardItem('2m²/h')])
-        self.model.appendRow(root)
+        self.infotree_model.appendRow(root)
 
         content_layout.addWidget(self.tree_view)
         content_layout.addStretch(0)
@@ -216,9 +216,20 @@ class CleanerTaskWindow(QWidget):
     def update_status_label(self, text: str):
         self.status_label.setText(text)
 
+    def set_main_window_timer(self, enabled: bool):
+        """设置主窗口定时器的启用状态"""
+        if hasattr(self, 'main_window'):
+            if enabled:
+                self.main_window.timer.start(10)
+            else:
+                self.main_window.timer.stop()
+
     @asyncSlot()
     async def toggle_task(self):
         if not self.task_running:
+            # 停止主窗口定时器
+            self.set_main_window_timer(False)
+
             # Stop video capture if running
             if self.video_running:
                 await self.stop_video()
@@ -240,6 +251,9 @@ class CleanerTaskWindow(QWidget):
             self.status_label.setText("任务已停止")
             self.status_label.setStyleSheet("color: black;")
             self.progress_bar.setValue(0)
+
+            # 恢复主窗口定时器
+            self.set_main_window_timer(True)
 
     @asyncSlot()
     async def toggle_video(self):
@@ -316,17 +330,15 @@ class CleanerTaskWindow(QWidget):
         try:
             self.status_label.setText("路径规划中")
             self.status_label.setStyleSheet("color: green;")
-            self.progress_bar.setValue(50)
+            self.progress_bar.setValue(0)
 
-            await multilayer_auv.async_main(self.status_label)
+            await multilayer_auv.async_main(self.status_label, self.progress_bar, self.infotree_model)
 
             self.status_label.setText("任务完成")
             self.status_label.setStyleSheet("color: black;")
-            self.progress_bar.setValue(100)
         except asyncio.CancelledError:
             self.status_label.setText("任务已停止")
             self.status_label.setStyleSheet("color: black;")
-            self.progress_bar.setValue(0)
             raise
         except Exception as e:
             self.status_label.setText("工作异常")
@@ -337,3 +349,5 @@ class CleanerTaskWindow(QWidget):
             self.task_running = False
             self.button.setText("自动清刷")
             self.current_task = None
+            # 确保在任务结束时恢复主窗口定时器
+            self.set_main_window_timer(True)

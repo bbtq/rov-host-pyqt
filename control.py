@@ -72,11 +72,11 @@ class Controller:
                     case 0 :
                         self.actions["x"] = axis
                     case 1 :
-                        self.actions["y"] = axis
+                        self.actions["y"] = -axis
                     case 2 :
                         self.actions["rot"] = axis
                     case 3 :
-                        self.actions["z"] = axis
+                        self.actions["z"] = -axis
 
             for event in pygame.event.get():
                 if event.type == pygame.JOYBUTTONDOWN:

@@ -1,4 +1,8 @@
 import asyncio
+
+from PyQt6.QtGui import QStandardItemModel, QStandardItem
+from PyQt6.QtWidgets import QLabel, QProgressBar, QTreeView
+
 from async_exec import AsyncExecutor
 import logging
 import jsonrpcclient as rpc
@@ -85,7 +89,7 @@ class Motion:
     def clear(self):
         self.y = 0.0
         self.z = 0.0
-        self.rot = 0.0
+        self.rot = -1.0
 
 
 class AUVTask:
@@ -103,14 +107,15 @@ class AUVTask:
     def start(self):
         return self.system.event_loop.create_task(self.run())
 
+
 # multilayer_auv.py
-async def async_main(label):
+async def async_main(label, progress, model):
     from multilayer_tasks import CVFrameIterator, Pool_Navigation_Task
     class MyAUVSystem(AUVSystem):
         def __init__(self, server):
             super().__init__(server=server)
             iterator_pool = CVFrameIterator(0)
-            self.main_task = Pool_Navigation_Task(self, iterator_pool, label)
+            self.main_task = Pool_Navigation_Task(self, iterator_pool, label, progress, model)
             # self.main_task = motion_test_Task(self, iterator_pool)
 
         async def lock_deep_and_direction(self):
@@ -138,17 +143,39 @@ async def async_main(label):
                     await asyncio.sleep(1)
         async def main_loop(self):
             logging.info('开始工作')
-            await self.main_task.start()
+            result = await self.main_task.start()
+            print(result)
 
     url = 'http://192.168.137.219:8888'
-    system = MyAUVSystem(FakeAUVServer())
+    fake_server = FakeAUVServer()
+    system = MyAUVSystem(fake_server)
     # system = MyAUVSystem(AUVServer(url=url))
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     await system.main_loop()
 
 
 def main():
+    # status_label = QLabel("工作状态")
+    # progress_bar = QProgressBar()
+    # tree_view = QTreeView()
+    # infotree_model = QStandardItemModel()
+    # infotree_model.setHorizontalHeaderLabels(['水下机器人', ' '])
+    # tree_view.setModel(infotree_model)
+    #
+    # # Sample data
+    # root = QStandardItem("清刷情况")
+    # root.appendRow([QStandardItem('清刷面积'), QStandardItem('6m²')])
+    # root.appendRow([QStandardItem('清刷时间'), QStandardItem('h')])
+    # root.appendRow([QStandardItem('清刷效率'), QStandardItem('2m²/h')])
+    # infotree_model.appendRow(root)
+
+
     asyncio.run(async_main())
+    
+
+if __name__ == '__main__':
+    main()
+
 
 # def main():
 #     from multilayer_tasks import CVFrameIterator, \
@@ -205,6 +232,3 @@ def main():
 #     system = MyAUVSystem(AUVServer(url=url))
 #     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 #     system.start()
-
-if __name__ == '__main__':
-    main()

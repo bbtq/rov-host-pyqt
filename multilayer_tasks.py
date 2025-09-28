@@ -65,7 +65,7 @@ class Motion:
         #前进
         self.y = 0.0
         #上升
-        self.z = 0.0
+        self.z = -1.0
         #右旋转
         self.rot = 0.0
 
@@ -115,7 +115,7 @@ class Robot_state:
         self.PID_controller_motion_rotation_advancing = PIDController(0.8,0,0.2,0.03,0.8)
 
         # 旋转运动的PID控制器
-        self.PID_controller_motion_rotation = PIDController(0.9,0,0.2,0.03,0.8)
+        self.PID_controller_motion_rotation = PIDController(0.5,0.1,0.3,0.03,0.8)
 
         # 机器人本次导航的运动路径，路径有一系列节点组成
         # self.path,_ = multilayer_obstacle_traversal_planner.return_path()
@@ -148,7 +148,7 @@ class LoopTask(AUVTask):
         super().__init__(system)
         self.infotree_model = treemodel
         self.running = False
-        self.area = 1.206
+        self.area = 1.156
         self.Total_elapsed_time = 0
         self.cleaning_efficiency = 0
 
@@ -171,7 +171,7 @@ class LoopTask(AUVTask):
             self.cleaning_efficiency = 60 * self.area / self.Total_elapsed_time
             self.update_model()
             print('任务结束>>>')
-            print(f"清洁总时长:{format(self.Total_elapsed_time, '.2f')}s")
+            print(f"清洁总时长:{format(self.Total_elapsed_time, '.2f')}min")
             print('计算清洁效率>>>')
             print(f"清洁效率：{format(self.cleaning_efficiency, '.2f')}m²/min")
             #返回（清洁面积，清洁时间，清洁效率，任务进度）
@@ -304,8 +304,8 @@ def distance_AB(A, B):
 # 投射变换前后四个点的坐标
 # 摄像头不在原来位置的话，需重新设置pts1四个点
 # 投射变换后获得正对着水池池底的画面
-pts1 = np.float32([[340, 132], [1656, 167], [1620, 712], [352, 718]])
-# pts1 = np.float32([[193, 40], [1600, 166], [1620, 720], [193, 715]])
+pts1 = np.float32([[200, 132], [1516, 167], [1480, 712], [212, 718]])
+# pts1 = np.float32([[340, 132], [1656, 167], [1500, 712], [352, 718]])
 pts2 = np.float32([[0, 0], [1920, 0], [1920, 1080], [0, 1080]])
 # 计算透视变换矩阵
 M = cv.getPerspectiveTransform(pts1, pts2)
@@ -377,7 +377,7 @@ def recognition_function(frame, overlay, model):
     gray = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
     # 识别画面中的apriltag码
     # tagDetection = at_detector.detect(img=gray, estimate_tag_pose=True, camera_params=cameraMatrix, tag_size=0.060325)
-    tagDetection = at_detector.detect(img=gray, camera_params=cameraMatrix, tag_size=0.060325)
+    tagDetection = at_detector.detect(img=gray, estimate_tag_pose=True, camera_params=cameraMatrix, tag_size=0.060325)
 
     # 获得图像中机器人的位置和方向
     if tagDetection == []:
@@ -565,6 +565,12 @@ def robot_advance(robot_state):
             robot_state.motion.y = velocit_y
         else:                                                   #如果机器人当前横坐标小于期望节点横坐标或纵坐标小于期望节点纵坐标，则后退
             robot_state.motion.y = -velocit_y
+    elif robot_state.area_direction_now in [-45, 45, 135, -135]:
+        A = robot_state.area_center_now
+        B = robot_state.area_center_next
+        C = robot_state.robot_center
+        distance = calculate_point_to_line_distance(A, B, C, robot_state.area_direction_now)  # 实现倾斜角度的平移
+        robot_state.motion.rot = robot_state.PID_controller_motion_rotation_advancing.calculate(0, distance)
 
     # 垂推暂时不开
     # robot_state.motion.z = 0
@@ -627,7 +633,12 @@ def robot_advance(robot_state):
         C = robot_state.robot_center
         distance = calculate_point_to_line_distance(A, B, C, robot_state.area_direction_now)          #实现倾斜角度的平移
         robot_state.motion.rot = robot_state.PID_controller_motion_rotation_advancing.calculate(0, distance)
-
+    # test_flag = True
+    # while test_flag:
+    #     if abs(robot_state.motion.rot) >= 0.3:
+    #         robot_state.motion.rot *= 0.66
+    #     else:
+    #         test_flag = False
     """
     这里的旋转指的是机器人在执行前进指令时的微调旋转，防止机器人偏离路线
     但是没搞懂PID赋值，这边需要注意！！！
@@ -870,15 +881,34 @@ class Pool_Navigation_Task(LoopTask):
         self.frames = frames
         self.frame = None
         self.server = server if server else system.server
-        # self.recognition_function = multilayer_navigation_arithmetics.recognition_function
-        # self.navigation_function = multilayer_navigation_arithmetics.navigation_function
         self.recognition_function = recognition_function
         self.navigation_function = navigation_function
+        self.robot_initialize = robot_initialize
+        self.robot_initialize_flag = True
         self.detect_first_frame_flag = True
         self.robot_state = None
         self.task_progress = 0
         self.overlay = None
         self.model = YOLO('best4.21.pt')
+        self.Vertical_thrusters_flag = True
+        self.K = multilayer_obstacle_traversal_planner.load_matrix_K_dist('calibrate_front_1080P.txt')[0]
+        self.distortion_coeffs = multilayer_obstacle_traversal_planner.load_matrix_K_dist('calibrate_front_1080P.txt')[
+            1]
+        self.roi_coords = (511, 356, 1575, 885)
+
+    def update_model(self):
+        super().update_model()  # 调用 LoopTask 的 update_model()
+
+        if not self.infotree_model:
+            return
+
+        root = self.infotree_model.item(0)  # 获取根节点 "清刷情况"
+        if root:
+            # 清洁效率评估结果（第4行第2列）
+            evaluation_item = root.child(3, 1)
+            if evaluation_item:
+                evaluation_item.setText(self.Cleaning_efficiency_results)
+
     async def loop(self):
         """
         实现自主水下机器人的目标物体识别和导航移动的任务。
@@ -894,50 +924,65 @@ class Pool_Navigation_Task(LoopTask):
         #进行第一帧的机器人画面识别与污垢检测
         if self.detect_first_frame_flag:
             #获取机器人中心点和污垢中心点
-            rob_center, dirt_centers = multilayer_obstacle_traversal_planner.detect_first_frame_centers(self.frame, self.model)
-            # print(f"rob_center_first_frame：{rob_center}, dirt_centers_first_frame：{dirt_centers}")
-            rob_center = []
-            dirt_centers = []
+            # rob_center, dirt_cewnters = multilayer_obstacle_traversal_planner.detect_first_frame_centers(self.frame, self.K, self.distortion_coeffs, self.model)
+            corners = multilayer_obstacle_traversal_planner.hsv_region_detection(self.frame, self.roi_coords, self.K, self.distortion_coeffs)[0]
+            # print(f"corners{corners}")
+            # [(629, 547), (1334, 547), (1334, 835), (629, 835)]
+            start_and_ends = multilayer_obstacle_traversal_planner.generate_representative_points(corners)
+            rob_center = start_and_ends[0]
+            dirt_centers = start_and_ends[1]
             #获取路径和地图的绘制结果
-            path_real, self.overlay = multilayer_obstacle_traversal_planner.return_path(rob_center, dirt_centers)
-            self.label.setText("工作中")
+            path_real, self.overlay = multilayer_obstacle_traversal_planner.return_path(rob_center, dirt_centers, corners)
+            # print(path_real)
             #实例化机器人状态
             self.robot_state = Robot_state(path_real)
             #将第一帧处理标志关闭
             self.detect_first_frame_flag = False
         self.robot_state.motion.z = -1.0 # 启动垂直推进器
-        # 识别Apriltag码，确认机器人的中心点与方向 [center,yaw]
-        results = self.recognition_function(self.frame, self.overlay, self.model)
-        if results==[]:
-            self.motion.clear()     #修改了 clear中 motion.z的值，保持一直吸污
-            pass
+
+        # 第一次运行时，先启动两秒的垂推，防止起步的偏移
+        if self.Vertical_thrusters_flag:
+            self.motion.z = -1.0
+            for _ in range(20):  # 2秒 / 0.1秒 = 20 次
+                await self.server.move(**self.motion.__dict__)
+                await asyncio.sleep(0.1)
+            self.Vertical_thrusters_flag = False
         else:
-        # 从 robot_state 中获取最新导航后的控制值，赋值给 self.motion
-            self.motion,navigation_over_flag = self.navigation_function(self.robot_state,results)
-            self.task_progress = self.robot_state.calulate_task_progress(self.robot_state.node_id)
-            # print(f"路径长度：{len(self.robot_state.path)}")
-            print(f"当前node_id:{self.robot_state.node_id}")
-            print("<<<>>>")
-            print(self.task_progress)
-            self.progress.setValue(int(self.task_progress))
-            if navigation_over_flag == True:
+            # 识别Apriltag码，确认机器人的中心点与方向 [center,yaw]
+            results = self.recognition_function(self.frame, self.overlay, self.model)
+            if results == []:
+                # self.motion.clear()  # 修改了 clear中 motion.z的值，保持一直吸污
+                pass
+            else:
+                self.motion, navigation_over_flag = self.navigation_function(self.robot_state, results)
+                self.task_progress = self.robot_state.calulate_task_progress(self.robot_state.node_id)
+                # print(f"路径长度：{len(self.robot_state.path)}")
+                print(f"当前node_id:{self.robot_state.node_id}")
+                print("<<<>>>")
+                print(self.task_progress)
+                self.progress.setValue(int(self.task_progress)) ##改成int类型传入 50位置
+                if navigation_over_flag == True:
+                    self.motion.clear()
+                    await self.server.move(**self.motion.__dict__)
+                    await asyncio.sleep(0.1)
+                    # Cleaning_efficiency_results = multilayer_obstacle_traversal_planner.hsv_Efficiency_of_cleaning(self.frame)
+                    self.Cleaning_efficiency_results = multilayer_obstacle_traversal_planner.hsv_Efficiency_of_cleaning(self.frame)
+                    print(f"清洁效率：{self.Cleaning_efficiency_results}")
+                    self.update_model()
+                    self.running = False
+                # print(f"motion.rot-->{self.motion.rot}, motion.y-->{self.motion.y}")
+            await self.server.move(**self.motion.__dict__)
+            await asyncio.sleep(0.001)
+
+            if cv2.waitKey(1) & 0xFF == 27:  # 结束任务-按下ESC键
                 self.motion.clear()
                 await self.server.move(**self.motion.__dict__)
                 await asyncio.sleep(0.1)
+                # evaluate_level = multilayer_obstacle_traversal_planner.evaluate_pool_frame(self.frame, 'evaluate_model.pth')
+                # print("evaluate_level:", evaluate_level)
+                self.frames.stop()
                 self.running = False
-
-        await self.server.move(**self.motion.__dict__)
-        await asyncio.sleep(0.001)
-
-        if cv2.waitKey(1) & 0xFF == 27:  # 结束任务-按下ESC键
-            self.motion.clear()
-            await self.server.move(**self.motion.__dict__)
-            await asyncio.sleep(0.1)
-            evaluate_level = multilayer_obstacle_traversal_planner.evaluate_pool_frame(self.frame, 'evaluate_model.pth')
-            print("evaluate_level:", evaluate_level)
-            self.frames.stop()
-            self.running = False
-            # stop_flag = self.is_task_done() #返回任务是否结束 True
-            # print('stop_flag:',stop_flag)
-            # print("任务结束")
+                # stop_flag = self.is_task_done() #返回任务是否结束 True
+                # print('stop_flag:',stop_flag)
+                # print("任务结束")
         return self.task_progress

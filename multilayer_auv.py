@@ -83,7 +83,7 @@ class AUVSystem(AsyncExecutor):
 class Motion:
     def __init__(self):
         self.y = 0.0
-        self.z = 0.0
+        self.z = -1.0
         self.rot = 0.0
 
     def clear(self):
@@ -147,9 +147,9 @@ async def async_main(label, progress, model):
             print(result)
 
     url = 'http://192.168.137.219:8888'
-    fake_server = FakeAUVServer()
-    system = MyAUVSystem(fake_server)
-    # system = MyAUVSystem(AUVServer(url=url))
+    # fake_server = FakeAUVServer()
+    # system = MyAUVSystem(fake_server)
+    system = MyAUVSystem(AUVServer(url=url))
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     await system.main_loop()
 

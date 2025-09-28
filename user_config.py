@@ -5,6 +5,7 @@ import asyncio
 from qasync import asyncSlot
 import multilayer_auv
 import cv2
+from multilayer_obstacle_traversal_planner import live_hsv_camera_adjust
 import numpy as np
 
 
@@ -100,8 +101,9 @@ class CleanerTaskWindow(QWidget):
         self.video_running = False  # Flag for video capture
         self.video_task = None  # Video capture task
         self.setWindowTitle("自动清刷监控窗口")
-        self.setGeometry(100, 100, 900, 600)
-        self.setMinimumSize(800, 600)
+        self.setGeometry(100, 100, 1000, 600)
+        self.setMinimumSize(1000, 600)
+        self.setMaximumSize(1000, 600)
 
         # Main horizontal layout
         main_layout = QVBoxLayout()
@@ -136,7 +138,6 @@ class CleanerTaskWindow(QWidget):
         content_layout.addStretch(0)
         content_layout.addWidget(self.status_label)
 
-
         # Bottom layout (buttons)
         buttons_layout = QHBoxLayout()
 
@@ -148,8 +149,13 @@ class CleanerTaskWindow(QWidget):
         self.button = QPushButton("自动清刷")
         self.button.clicked.connect(self.toggle_task)
 
+        # HSV Threshold Setting button
+        self.hsv_button = QPushButton("阈值设置")  # 添加阈值设置按钮
+        self.hsv_button.clicked.connect(self.open_hsv_adjustment)  # 绑定点击事件
+
         buttons_layout.addWidget(self.monitor_button)
         buttons_layout.addWidget(self.button)
+        buttons_layout.addWidget(self.hsv_button)  # 将阈值设置按钮添加到布局中
 
         content_layout.addLayout(buttons_layout)
         content_layout.addStretch(0)
@@ -165,6 +171,7 @@ class CleanerTaskWindow(QWidget):
         root.appendRow([QStandardItem('清刷面积'), QStandardItem('6m²')])
         root.appendRow([QStandardItem('清刷时间'), QStandardItem('h')])
         root.appendRow([QStandardItem('清刷效率'), QStandardItem('2m²/h')])
+        root.appendRow([QStandardItem('清洁率'), QStandardItem('90%')])
         self.infotree_model.appendRow(root)
 
         content_layout.addWidget(self.tree_view)
@@ -351,3 +358,9 @@ class CleanerTaskWindow(QWidget):
             self.current_task = None
             # 确保在任务结束时恢复主窗口定时器
             self.set_main_window_timer(True)
+
+    def open_hsv_adjustment(self):
+        """
+        调用set.py中的live_hsv_camera_adjust方法，打开HSV阈值调整窗口。
+        """
+        live_hsv_camera_adjust(camera_index=0, roi_coords=(659, 440, 1405, 740))

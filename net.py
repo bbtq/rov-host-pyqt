@@ -26,10 +26,8 @@ class VideoStream(QObject):
             return
 
         while self.running:
-            print("1")
             while cap.grab():  # 快速抓取帧，不解码
                 break
-            print("2")
             ret, frame = cap.retrieve()  # 解码最后一帧
             if ret:
                 self.frame_received.emit(frame)
